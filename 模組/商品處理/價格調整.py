@@ -27,19 +27,34 @@ class 價格調整:
             driver: Selenium WebDriver實例
         """
         self.driver = driver
+        self.調整記錄 = []  # 用於存儲調整記錄
         
-    def 調整商品價格(self, 商品名稱, 規格名稱, 新價格):
-        """調整特定商品規格的價格，使用接近人工操作的方式並實現可靠的重試機制"""
+    def 獲取調整記錄(self):
+        """獲取價格調整記錄
+        
+        Returns:
+            list: 調整記錄列表
+        """
+        return self.調整記錄.copy()  # 返回記錄的副本，避免外部修改
+        
+    def 調整商品價格(self, 商品名稱, 規格名稱, 新價格, record_manager=None, 原價格=None, 參考規格名稱="", 參考規格價格=None):
+        """調整特定商品規格的價格，使用接近人工操作的方式並實現可靠的重試機制
+        
+        Args:
+            商品名稱: 要調整的商品名稱
+            規格名稱: 要調整的規格名稱
+            新價格: 要設定的新價格
+            record_manager: 紀錄管理器實例，用於記錄調整操作
+            原價格: 規格當前的折扣價格，如果提供則直接使用，不從頁面獲取
+            參考規格名稱: 用於參考價格的規格名稱
+            參考規格價格: 參考規格的折扣價格
+            
+        Returns:
+            bool: 調整是否成功
+        """
         MAX_RETRIES = 3  # 減少最大重試次數，提高效率
         success = False
-        調整記錄 = {
-            "商品名稱": 商品名稱,
-            "規格名稱": 規格名稱,
-            "輸入價格": 新價格,
-            "原價格": "未知",
-            "調整結果": False,
-            "調整時間": time.strftime("%Y-%m-%d %H:%M:%S")
-        }
+        actual_原價格 = 原價格  # 使用傳入的原價格，如果有的話
         
         for retry_count in range(MAX_RETRIES):
             try:
@@ -186,32 +201,6 @@ class 價格調整:
                         continue
                     
                     logger.info("找到規格行，準備調整價格...")
-                    
-                    # 獲取當前價格
-                    try:
-                        當前價格 = self.driver.execute_script("""
-                            if (!arguments[0]) return 'N/A';
-                            
-                            // 查找價格欄位
-                            const input = arguments[0].querySelector('input.eds-input__input');
-                            if (input) {
-                                return input.value;
-                            }
-                            
-                            // 如果沒有找到輸入框，嘗試查找只讀價格
-                            const priceElement = arguments[0].querySelector('.currency-input');
-                            if (priceElement) {
-                                return priceElement.textContent.trim();
-                            }
-                            
-                            return 'N/A';
-                        """, spec_row)
-                        
-                        if 當前價格 and 當前價格 != 'N/A':
-                            調整記錄["原價格"] = 當前價格
-                            logger.info(f"當前價格: {當前價格}")
-                    except Exception as e:
-                        logger.warning(f"獲取當前價格時出錯: {str(e)}")
                     
                     # 確保規格開關已開啟
                     switch_status = self.driver.execute_script("""
@@ -439,6 +428,16 @@ class 價格調整:
                     
                     logger.info("找到價格輸入框，準備輸入新價格...")
                     
+                    # 嘗試獲取當前價格（用於記錄）
+                    if record_manager and not actual_原價格:
+                        try:
+                            current_value = self.driver.execute_script("return arguments[0].value", discount_input)
+                            if current_value:
+                                actual_原價格 = current_value
+                                logger.info(f"獲取到當前價格: {actual_原價格}")
+                        except Exception as e:
+                            logger.warning(f"無法獲取當前價格: {str(e)}")
+                    
                     # 清除輸入框當前值並輸入新價格 (帶視覺反饋)
                     input_result = self.driver.execute_script("""
                         function setInputValueWithAnimation(input, value) {
@@ -566,8 +565,37 @@ class 價格調整:
                             continue
                         
                         success = True
-                        調整記錄["調整結果"] = True
-                        return success, 調整記錄
+                        
+                        # 記錄調整結果
+                        if record_manager:
+                            try:
+                                logger.info("記錄價格調整操作...")
+                                record_manager.記錄價格調整(
+                                    商品名稱=商品名稱, 
+                                    規格名稱=規格名稱, 
+                                    原價格=actual_原價格, 
+                                    新價格=新價格, 
+                                    成功=True, 
+                                    參考規格=參考規格名稱, 
+                                    參考折扣價=參考規格價格
+                                )
+                            except Exception as record_error:
+                                logger.error(f"記錄價格調整時發生錯誤: {str(record_error)}")
+                        
+                        # 在內部記錄調整操作，供批量處理使用
+                        調整記錄 = {
+                            "商品名稱": 商品名稱,
+                            "規格名稱": 規格名稱,
+                            "原價格": actual_原價格,
+                            "新價格": 新價格,
+                            "成功": True,
+                            "時間": time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "參考規格": 參考規格名稱,
+                            "參考折扣價": 參考規格價格
+                        }
+                        self.調整記錄.append(調整記錄)
+                        
+                        return True
                     else:
                         error_msg = input_result.get('message', '未知錯誤') if input_result else '輸入操作失敗'
                         logger.warning(f"❌ 價格輸入失敗: {error_msg}")
@@ -593,8 +621,37 @@ class 價格調整:
                                     if current_value == str(新價格):
                                         logger.info(f"✓ 使用直接方法成功設置價格: {新價格}")
                                         success = True
-                                        調整記錄["調整結果"] = True
-                                        return success, 調整記錄
+                                        
+                                        # 記錄調整結果
+                                        if record_manager:
+                                            try:
+                                                logger.info("記錄價格調整操作...")
+                                                record_manager.記錄價格調整(
+                                                    商品名稱=商品名稱, 
+                                                    規格名稱=規格名稱, 
+                                                    原價格=actual_原價格, 
+                                                    新價格=新價格, 
+                                                    成功=True, 
+                                                    參考規格=參考規格名稱, 
+                                                    參考折扣價=參考規格價格
+                                                )
+                                            except Exception as record_error:
+                                                logger.error(f"記錄價格調整時發生錯誤: {str(record_error)}")
+                                        
+                                        # 在內部記錄調整操作，供批量處理使用
+                                        調整記錄 = {
+                                            "商品名稱": 商品名稱,
+                                            "規格名稱": 規格名稱,
+                                            "原價格": actual_原價格,
+                                            "新價格": 新價格,
+                                            "成功": True,
+                                            "時間": time.strftime("%Y-%m-%d %H:%M:%S"),
+                                            "參考規格": 參考規格名稱,
+                                            "參考折扣價": 參考規格價格
+                                        }
+                                        self.調整記錄.append(調整記錄)
+                                        
+                                        return True
                             except Exception as direct_input_error:
                                 logger.error(f"直接輸入方法失敗: {str(direct_input_error)}")
                 except Exception as e:
@@ -611,4 +668,4 @@ class 價格調整:
         if not success:
             logger.error(f"❌ 無法調整商品 '{商品名稱}' 規格 '{規格名稱}' 的價格，已達到最大重試次數")
         
-        return success, 調整記錄 
+        return success 
