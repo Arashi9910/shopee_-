@@ -22,6 +22,7 @@ from 模組.瀏覽器處理 import 瀏覽器控制
 from 模組.商品處理 import 商品處理集成
 from 模組.介面處理 import 介面控制
 from 模組.彈窗處理 import 彈窗處理
+from 模組.紀錄輸出 import 紀錄管理器
 
 # 設置日誌
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -48,6 +49,12 @@ class 調價主程式:
             self.setup_gui()
         else:
             self.interface = None
+        
+        # 初始化彈窗處理
+        self.popup_handler = 彈窗處理()
+        
+        # 初始化紀錄管理器
+        self.紀錄器 = 紀錄管理器()
     
     def _cleanup(self):
         """清理資源，確保瀏覽器正確關閉"""
@@ -191,78 +198,85 @@ class 調價主程式:
             self.interface.show_error_dialog("錯誤", f"連接瀏覽器時發生錯誤: {str(e)}")
     
     def edit_discount_activity(self):
-        """編輯折扣活動"""
+        """進入編輯折扣活動頁面並獲取商品數據"""
         try:
+            # 檢查瀏覽器是否已啟動
             if not self.driver or not self.browser_controller:
                 self.interface.log_message("✗ 請先啟動或連接Chrome瀏覽器")
                 self.interface.show_warning_dialog("警告", "請先啟動或連接Chrome瀏覽器")
                 return
             
-            # 檢查當前URL，如果有URL輸入則進行導航
+            # 如果有網址輸入，則先導航
             url = self.interface.get_url()
             if url:
-                current_url = self.driver.current_url
-                if url not in current_url:
-                    self.interface.log_message(f"導航到網址: {url}")
-                    success = self.browser_controller.導航到網址(url)
-                    if not success:
-                        self.interface.log_message(f"⚠ 導航失敗，請檢查網址是否正確: {url}")
-                        self.interface.show_warning_dialog("警告", "導航失敗，請檢查網址是否正確")
-                        return
-                    self.interface.log_message("✓ 成功導航到頁面")
-                
-            # 進入折扣活動編輯頁面
-            self.interface.log_message("開始編輯折扣活動流程...")
+                self.interface.log_message(f"導航到活動網址: {url}")
+                success = self.browser_controller.導航到網址(url)
+                if not success:
+                    self.interface.log_message(f"⚠ 導航失敗，請檢查網址是否正確: {url}")
+                    self.interface.show_warning_dialog("警告", "導航失敗，請檢查網址是否正確")
+                    return
             
-            # 初始化商品處理
+            # 初始化商品處理模組
             product_handler = 商品處理集成(self.driver)
             
-            # 確保在編輯模式
-            if not product_handler.搜尋.檢查是否編輯模式():
-                self.interface.log_message("嘗試進入編輯模式...")
-                if not product_handler.進入編輯模式():
-                    self.interface.log_message("⚠ 無法進入編輯模式，可能需要手動操作")
-                    self.interface.show_warning_dialog("警告", "無法進入編輯模式，請手動點擊編輯按鈕後再試")
-                    return
-                self.interface.log_message("✓ 已成功進入編輯模式")
-            else:
-                self.interface.log_message("✓ 已處於編輯模式")
+            # 進入編輯頁面
+            self.interface.log_message("嘗試進入編輯模式...")
+            if not product_handler.搜尋.進入編輯模式():
+                self.interface.log_message("⚠ 無法進入編輯模式，可能需要手動點擊")
+                self.interface.show_warning_dialog("警告", "無法自動進入編輯模式，請手動點擊編輯按鈕後再試")
+                return
             
-            # 搜尋商品
-            self.interface.log_message("正在搜尋商品...")
+            self.interface.log_message("✓ 成功進入編輯模式")
+            
+            # 獲取商品數據
+            self.interface.log_message("正在獲取商品數據...")
             search_result = product_handler.搜尋.搜尋商品()
             
-            # 确保search_result包含有效数据
-            if not search_result or not isinstance(search_result, dict):
-                self.interface.log_message("⚠ 搜尋結果格式錯誤")
-                self.interface.show_warning_dialog("警告", "搜尋結果格式錯誤，請重試")
+            if not search_result:
+                self.interface.log_message("⚠ 未能獲取商品數據")
+                self.interface.show_error_dialog("錯誤", "未能獲取商品數據")
                 return
-                
-            # 提取商品列表
+            
+            # 商品數量
             products = search_result.get("products", [])
-            product_count = search_result.get("product_count", 0)
+            product_count = len(products)
             spec_count = search_result.get("spec_count", 0)
             
-            if not products or product_count == 0:
-                self.interface.log_message("⚠ 未找到任何商品")
-                self.interface.show_warning_dialog("警告", "未找到任何商品，請確認頁面內容")
-                return
+            self.interface.log_message(f"✓ 已獲取 {product_count} 個商品，共 {spec_count} 個規格")
             
-            # 保存商品列表以備后用
+            # 將商品數據保存以便後續處理
             self.products = products
-            self.interface.log_message(f"✓ 找到 {product_count} 個商品，共 {spec_count} 個規格")
             
-            # 顯示商品規格信息
-            info_text = product_handler.規格分析.格式化商品資訊(products)
-            self.interface.log_message("顯示商品規格信息:")
-            self.interface.log_message(info_text)
-            
-            self.interface.show_info_dialog("成功", f"成功獲取到 {product_count} 個商品信息\n請點擊「批量處理商品規格」按鈕繼續")
-            
+            # 嘗試記錄現有商品價格
+            try:
+                # 清空現有記錄
+                self.紀錄器.清空記錄()
+                
+                # 記錄所有獲取到的商品和規格初始狀態
+                for product in products:
+                    商品名稱 = product.get("name", "")
+                    for spec in product.get("specs", []):
+                        規格名稱 = spec.get("name", "")
+                        折扣價格 = spec.get("price", "未知")
+                        狀態 = spec.get("status", "")
+                        
+                        # 記錄初始狀態
+                        self.紀錄器.記錄價格調整(
+                            商品名稱, 
+                            規格名稱, 
+                            折扣價格, 
+                            "尚未調整", 
+                            狀態 == "開啟"
+                        )
+                
+                self.interface.log_message(f"✓ 已記錄 {len(self.紀錄器.調整紀錄列表)} 個商品規格的初始狀態")
+            except Exception as record_error:
+                logger.warning(f"記錄初始狀態時出錯: {str(record_error)}")
+        
         except Exception as e:
-            logger.error(f"編輯折扣活動時發生錯誤: {str(e)}")
+            logger.error(f"進入編輯折扣活動頁面時發生錯誤: {str(e)}")
             self.interface.log_message(f"✗ 錯誤: {str(e)}")
-            self.interface.show_error_dialog("錯誤", f"編輯折扣活動時發生錯誤: {str(e)}")
+            self.interface.show_error_dialog("錯誤", f"進入編輯折扣活動頁面時發生錯誤: {str(e)}")
     
     def batch_process(self):
         """批量處理商品規格，包括開啟按鈕和調整價格"""
@@ -285,21 +299,107 @@ class 調價主程式:
             product_handler = 商品處理集成(self.driver)
             
             # 批量處理商品規格
-            結果 = product_handler.批量處理.批量處理商品規格(self.products)
+            總處理數, 開關成功數, 價格成功數 = product_handler.批量處理.批量處理商品規格(self.products)
             
-            # 確保結果包含三個值
-            if isinstance(結果, tuple) and len(結果) == 3:
-                總處理數, 開關成功數, 價格成功數 = 結果
-            else:
-                # 如果返回结果不是预期的三元组，记录错误并使用默认值
-                self.interface.log_message("⚠ 批量處理返回的結果格式不正確")
-                logger.warning(f"批量處理返回的結果格式不正確: {結果}")
-                總處理數 = 0
-                開關成功數 = 0
-                價格成功數 = 0
+            # 記錄商品調整結果
+            self.interface.log_message("正在記錄調整結果...")
             
-            # 顯示處理結果
-            self.interface.log_message(f"批量處理完成: 總共 {總處理數} 個規格，開啟 {開關成功數} 個，調整價格 {價格成功數} 個")
+            # 尋找最近處理過的商品，從頁面獲取其規格和價格信息
+            try:
+                # 使用JavaScript從頁面獲取已處理的商品規格信息
+                已處理商品記錄 = self.driver.execute_script("""
+                    // 收集已處理的商品規格和價格信息
+                    const result = [];
+                    
+                    // 獲取所有商品容器
+                    const productContainers = document.querySelectorAll('div.discount-item-component, div.discount-edit-item');
+                    
+                    for (const container of productContainers) {
+                        // 獲取商品名稱
+                        const nameEl = container.querySelector('div.ellipsis-content.single');
+                        if (!nameEl) continue;
+                        
+                        const 商品名稱 = nameEl.textContent.trim();
+                        
+                        // 獲取規格元素
+                        const specElements = container.querySelectorAll('div.discount-view-item-model-component, div.discount-edit-item-model-component');
+                        
+                        for (const specElement of specElements) {
+                            // 獲取規格名稱
+                            const specNameEl = specElement.querySelector('div.ellipsis-content.single');
+                            if (!specNameEl) continue;
+                            
+                            const 規格名稱 = specNameEl.textContent.trim();
+                            
+                            // 獲取價格信息
+                            const priceInput = specElement.querySelector('input.eds-input__input');
+                            const priceDisplay = specElement.querySelector('.currency-input, [class*="price"]');
+                            
+                            let 價格 = '未知';
+                            if (priceInput) {
+                                價格 = priceInput.value;
+                            } else if (priceDisplay) {
+                                價格 = priceDisplay.textContent.trim();
+                            }
+                            
+                            // 確認是否為開啟狀態
+                            const switchEl = specElement.querySelector('div.eds-switch');
+                            let 是否開啟 = false;
+                            
+                            if (switchEl) {
+                                是否開啟 = switchEl.classList.contains('eds-switch--open');
+                            }
+                            
+                            result.push({
+                                '商品名稱': 商品名稱,
+                                '規格名稱': 規格名稱,
+                                '折扣價格': 價格,
+                                '是否開啟': 是否開啟
+                            });
+                        }
+                    }
+                    
+                    return result;
+                """)
+                
+                if 已處理商品記錄:
+                    for 記錄 in 已處理商品記錄:
+                        # 從products中找到對應的規格價格設定
+                        商品名稱 = 記錄.get('商品名稱', '')
+                        規格名稱 = 記錄.get('規格名稱', '')
+                        折扣價格 = 記錄.get('折扣價格', '未知')
+                        
+                        設定價格 = '未設定'
+                        成功狀態 = False
+                        
+                        # 在products中尋找對應的設定價格
+                        for product in self.products:
+                            if product.get('name') == 商品名稱:
+                                for spec in product.get('specs', []):
+                                    if spec.get('name') == 規格名稱:
+                                        設定價格 = spec.get('price', '未設定')
+                                        # 假設與折扣價格相同的視為成功
+                                        成功狀態 = str(設定價格) in str(折扣價格)
+                                        break
+                        
+                        # 記錄調整信息
+                        self.紀錄器.記錄價格調整(商品名稱, 規格名稱, 折扣價格, 設定價格, 成功狀態)
+                    
+                    # 輸出Excel報表
+                    excel_path = self.紀錄器.輸出Excel報表()
+                    if excel_path:
+                        self.紀錄器.添加統計摘要(excel_path, 總處理數, 價格成功數, 總處理數 - 價格成功數)
+                        self.interface.log_message(f"✓ 已將調整記錄保存至: {excel_path}")
+                        
+                        # 打開報表目錄
+                        os.startfile(os.path.dirname(excel_path))
+                    else:
+                        self.interface.log_message("⚠ 無法生成調整記錄Excel")
+                else:
+                    self.interface.log_message("⚠ 無法從頁面獲取已處理的商品信息")
+            except Exception as record_error:
+                logger.error(f"記錄調整結果時出錯: {str(record_error)}")
+                self.interface.log_message(f"⚠ 記錄調整結果時出錯: {str(record_error)}")
             
             # 更新UI
             if 總處理數 > 0:
