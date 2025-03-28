@@ -629,27 +629,73 @@ class 商品搜尋:
         try:
             logger.info("檢查是否處於編輯模式...")
             
-            # 使用JavaScript檢查頁面上的編輯模式指示元素
+            # 檢查URL是否包含特定的編輯標識
+            current_url = self.driver.current_url
+            logger.info(f"當前URL: {current_url}")
+            
+            # 檢查URL是否明確指示編輯模式
+            if '/edit' in current_url:
+                logger.info("✓ URL顯示處於編輯模式")
+                return True
+            
+            # 使用JavaScript檢查頁面上的編輯模式指示元素和URL
             is_edit_mode = self.driver.execute_script("""
                 // 檢查URL是否包含編輯相關的字段
                 const url = window.location.href;
-                if (url.includes('editor') || url.includes('edit') || url.includes('modify')) {
-                    console.log('URL顯示可能處於編輯模式');
+                if (url.includes('/edit')) {
+                    console.log('URL顯示處於編輯模式');
                     return true;
                 }
                 
-                // 檢查是否有編輯模式特有的元素
-                const editElements = document.querySelectorAll('.eds-switch, .eds-button, .edit-button, button[class*="edit"]');
-                if (editElements.length > 0) {
-                    console.log('找到編輯模式特有元素');
-                    return true;
+                // 檢查是否有確認按鈕，確認按鈕通常只在編輯模式出現
+                const confirmButtons = document.querySelectorAll('.eds-button--confirm, .btn-confirm, button[type="submit"]');
+                if (confirmButtons.length > 0) {
+                    for (const btn of confirmButtons) {
+                        if (btn.offsetParent !== null && 
+                            (btn.textContent.includes('確認') || 
+                             btn.textContent.includes('保存') || 
+                             btn.textContent.includes('提交'))) {
+                            console.log('找到確認按鈕，處於編輯模式');
+                            return true;
+                        }
+                    }
                 }
                 
-                // 檢查頁面標題或內容
-                const titleElement = document.querySelector('title, h1, .page-title');
-                if (titleElement && (titleElement.textContent.includes('編輯') || titleElement.textContent.includes('Edit'))) {
-                    console.log('頁面標題包含編輯字樣');
-                    return true;
+                // 檢查是否可以編輯商品狀態
+                const switches = document.querySelectorAll('.eds-switch');
+                if (switches.length > 0) {
+                    // 檢查開關是否可以互動，即是否有點擊事件或非禁用狀態
+                    for (const switchEl of switches) {
+                        if (!switchEl.classList.contains('eds-switch--disabled') && 
+                            switchEl.offsetParent !== null) {
+                            console.log('找到可互動的開關元素，處於編輯模式');
+                            return true;
+                        }
+                    }
+                }
+                
+                // 檢查是否有輸入框可以編輯，通常編輯模式會有可編輯的輸入框
+                const inputs = document.querySelectorAll('input:not([type="hidden"]), textarea');
+                if (inputs.length > 0) {
+                    for (const input of inputs) {
+                        if (!input.disabled && !input.readOnly && 
+                            input.offsetParent !== null &&
+                            getComputedStyle(input).display !== 'none') {
+                            console.log('找到可編輯的輸入框，處於編輯模式');
+                            return true;
+                        }
+                    }
+                }
+                
+                // 檢查頁面標題或內容是否明確包含編輯字樣
+                const editIndicators = document.querySelectorAll('[class*="edit"], [id*="edit"]');
+                for (const indicator of editIndicators) {
+                    if (indicator.classList.contains('discount-edit-item') || 
+                        indicator.classList.contains('edit-mode') ||
+                        indicator.id.includes('edit-mode')) {
+                        console.log('找到明確的編輯模式標識元素');
+                        return true;
+                    }
                 }
                 
                 console.log('未檢測到編輯模式特徵');
@@ -657,231 +703,177 @@ class 商品搜尋:
             """)
             
             if is_edit_mode:
-                logger.info("✓ 檢測到編輯模式元素: .eds-switch")
-            else:
-                logger.info("⚠ 未檢測到編輯模式元素")
+                logger.info("✓ 檢測到編輯模式元素")
+                return True
             
-            return is_edit_mode
+            # 額外檢查: 嘗試判斷頁面是否有"編輯"按鈕
+            edit_buttons = self.driver.find_elements(By.XPATH, "//button[contains(text(), '編輯')]")
+            if edit_buttons and any(btn.is_displayed() for btn in edit_buttons):
+                logger.info("⚠ 找到「編輯」按鈕，表示頁面未處於編輯模式")
+                return False
+            
+            logger.info("⚠ 未檢測到編輯模式元素")
+            return False
             
         except Exception as e:
             logger.error(f"檢查編輯模式時發生錯誤: {str(e)}")
             return False
     
+    def 點擊編輯按鈕(self):
+        """尋找並點擊折扣活動編輯按鈕"""
+        try:
+            logger.info("尋找頁面上的編輯按鈕...")
+            
+            # 方法1: 使用XPath查找包含「編輯」文字的按鈕
+            edit_buttons = self.driver.find_elements(By.XPATH, "//button[contains(text(), '編輯')]")
+            
+            # 方法2: 使用多個可能的選擇器
+            if not edit_buttons:
+                selectors = [
+                    ".edit-button",
+                    "button.eds-button--primary",
+                    "button.activity-edit-btn",
+                    ".activity-operation-btn button",
+                    ".activity-operation__edit-btn"
+                ]
+                
+                for selector in selectors:
+                    temp_buttons = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    if temp_buttons:
+                        for btn in temp_buttons:
+                            if "編輯" in btn.text:
+                                edit_buttons.append(btn)
+            
+            # 嘗試點擊找到的編輯按鈕
+            if edit_buttons:
+                for button in edit_buttons:
+                    if button.is_displayed():
+                        logger.info(f"找到編輯按鈕: {button.text}")
+                        
+                        # 滾動到按鈕可見
+                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
+                        time.sleep(0.5)
+                        
+                        # 高亮顯示按鈕
+                        self.driver.execute_script("arguments[0].style.border='3px solid red';", button)
+                        
+                        # 點擊按鈕
+                        button.click()
+                        logger.info("✓ 成功點擊編輯按鈕")
+                        
+                        # 等待頁面加載
+                        time.sleep(3)
+                        return True
+            
+            # 方法3: 使用JavaScript查找和點擊編輯按鈕
+            logger.info("嘗試使用JavaScript查找編輯按鈕...")
+            js_result = self.driver.execute_script("""
+                // 查找所有按鈕
+                const allButtons = document.querySelectorAll('button');
+                
+                // 遍歷按鈕尋找編輯按鈕
+                for (const btn of allButtons) {
+                    if (btn.innerText.includes('編輯') && btn.offsetParent !== null) {
+                        console.log('找到編輯按鈕:', btn.innerText);
+                        btn.scrollIntoView({block: 'center'});
+                        btn.style.border = '3px solid green';
+                        btn.click();
+                        return true;
+                    }
+                }
+                
+                // 查找可能的編輯按鈕類名
+                const possibleEditButtons = document.querySelectorAll('.edit-button, .eds-button--primary, .activity-edit-btn');
+                for (const btn of possibleEditButtons) {
+                    if (btn.offsetParent !== null) {
+                        console.log('找到可能的編輯按鈕:', btn.innerText);
+                        btn.scrollIntoView({block: 'center'});
+                        btn.style.border = '3px solid blue';
+                        btn.click();
+                        return true;
+                    }
+                }
+                
+                return false;
+            """)
+            
+            if js_result:
+                logger.info("✓ JavaScript成功找到並點擊了編輯按鈕")
+                time.sleep(3)
+                return True
+            
+            logger.warning("✗ 未找到編輯按鈕")
+            return False
+        
+        except Exception as e:
+            logger.error(f"點擊編輯按鈕時發生錯誤: {str(e)}")
+            return False
+    
     def 進入編輯模式(self):
-        """嘗試進入編輯模式
-        
-        Returns:
-            bool: 是否成功進入編輯模式
-        """
-        MAX_RETRIES = 3
-        
-        if self.檢查是否編輯模式():
-            logger.info("已處於編輯模式，無需操作")
-            return True
-        
-        logger.info("嘗試進入編輯模式...")
-        
-        for retry in range(MAX_RETRIES):
-            try:
-                logger.info(f"第 {retry + 1}/{MAX_RETRIES} 次嘗試尋找編輯按鈕...")
-                
-                # 尋找編輯按鈕 - 擴展選擇器
-                edit_button = self.driver.execute_script("""
-                    // 更全面地查找可能的編輯按鈕
-                    const editButtons = [
-                        // CSS 選擇器尋找
-                        ...document.querySelectorAll('button[class*="edit"], a[class*="edit"], [class*="button"][class*="edit"]'),
-                        ...document.querySelectorAll('.edit-action, .edit-button, .action-edit, button.eds-button, .btn-edit'),
-                        // 文本內容尋找 - 原生方法
-                        ...Array.from(document.querySelectorAll('button, a, [role="button"]')).filter(el => 
-                            el.textContent.includes('編輯') || 
-                            el.textContent.includes('Edit') ||
-                            el.textContent.includes('編集') || 
-                            el.textContent.includes('修改')),
-                        // 蝦皮特定按鈕
-                        ...document.querySelectorAll('.edit-discount-btn, .edit-activity'),
-                        // 通用的可點擊元素
-                        ...document.querySelectorAll('[data-cy*="edit"], [data-test*="edit"]'),
-                        // 圖標按鈕
-                        ...document.querySelectorAll('button i[class*="edit"], .icon-edit')
-                    ];
-                    
-                    // 過濾掉不可見或已禁用的按鈕
-                    const visibleButtons = editButtons.filter(button => {
-                        // 檢查元素是否可見
-                        const style = window.getComputedStyle(button);
-                        const isVisible = style.display !== 'none' && 
-                                         style.visibility !== 'hidden' && 
-                                         style.opacity !== '0' &&
-                                         button.offsetParent !== null;
-                                         
-                        // 檢查是否已禁用
-                        const isEnabled = !button.disabled && !button.classList.contains('disabled');
-                        
-                        return isVisible && isEnabled;
-                    });
-                    
-                    // 去重
-                    const uniqueButtons = Array.from(new Set(visibleButtons));
-                    
-                    if (uniqueButtons.length === 0) {
-                        console.log('未找到編輯按鈕');
-                        return null;
-                    }
-                    
-                    console.log(`找到 ${uniqueButtons.length} 個可能的編輯按鈕`);
-                    
-                    // 高亮所有找到的按鈕，便於診斷
-                    uniqueButtons.forEach((btn, index) => {
-                        btn.style.outline = '2px dashed orange';
-                        console.log(`按鈕 ${index+1}: ${btn.textContent.trim() || '[無文字]'}`);
-                    });
-                    
-                    // 優先選擇文本精確包含「編輯」的按鈕
-                    for (const button of uniqueButtons) {
-                        const text = button.textContent.trim();
-                        if (text === '編輯' || text === 'Edit' || text === '修改') {
-                            button.style.border = '3px solid red';
-                            console.log('找到確定的編輯按鈕:', text);
-                            return button;
-                        }
-                    }
-                    
-                    // 次優先選擇包含「編輯」的按鈕
-                    for (const button of uniqueButtons) {
-                        if (button.textContent.includes('編輯') || button.textContent.includes('Edit')) {
-                            button.style.border = '3px solid blue';
-                            console.log('找到包含編輯的按鈕:', button.textContent);
-                            return button;
-                        }
-                    }
-                    
-                    // 選擇第一個可能的編輯按鈕
-                    uniqueButtons[0].style.border = '3px solid yellow';
-                    console.log('使用可能的編輯按鈕:', uniqueButtons[0].textContent);
-                    return uniqueButtons[0];
-                """)
-                
-                if not edit_button:
-                    logger.warning("未找到編輯按鈕，嘗試其他方法...")
-                    
-                    # 嘗試使用URL修改法進入編輯模式
-                    logger.info("嘗試通過修改URL進入編輯模式...")
-                    js_result = self.driver.execute_script("""
-                        // 檢查當前URL並嘗試修改
-                        const currentUrl = window.location.href;
-                        
-                        // 如果URL不包含edit參數，嘗試添加
-                        if (!currentUrl.includes('/edit')) {
-                            // 蝦皮特定URL模式: discount/{id} -> discount/{id}/edit
-                            if (currentUrl.includes('/discount/')) {
-                                const newUrl = currentUrl.endsWith('/') 
-                                    ? currentUrl + 'edit' 
-                                    : currentUrl + '/edit';
-                                    
-                                console.log(`嘗試從 ${currentUrl} 跳轉到 ${newUrl}`);
-                                window.location.href = newUrl;
-                                return true;
-                            }
-                        } else {
-                            // 已經在編輯模式URL
-                            return true;
-                        }
-                        
-                        return false;
-                    """)
-                    
-                    if js_result:
-                        logger.info("✓ URL修改成功，等待頁面加載...")
-                        time.sleep(5)  # 等待頁面跳轉
-                        
-                        if self.檢查是否編輯模式():
-                            logger.info("✓ 已通過URL修改成功進入編輯模式")
-                            return True
-                    
-                    time.sleep(1)
-                    continue
-                
-                # 點擊按鈕
-                logger.info("點擊編輯按鈕...")
-                
-                # 先嘗試常規點擊
-                try:
-                    self.driver.execute_script("arguments[0].click();", edit_button)
-                    logger.info("已使用JavaScript執行點擊")
-                except Exception as click_err:
-                    logger.warning(f"JavaScript點擊失敗: {str(click_err)}，嘗試Selenium點擊...")
-                    try:
-                        edit_button.click()
-                        logger.info("已使用Selenium執行點擊")
-                    except:
-                        logger.warning("常規點擊方法都失敗了，嘗試模擬事件...")
-                        self.driver.execute_script("""
-                            const button = arguments[0];
-                            // 嘗試各種事件來觸發按鈕
-                            ['mousedown', 'mouseup', 'click'].forEach(eventType => {
-                                const event = new MouseEvent(eventType, {
-                                    view: window,
-                                    bubbles: true,
-                                    cancelable: true
-                                });
-                                button.dispatchEvent(event);
-                            });
-                        """, edit_button)
-                
+        """檢查並進入編輯模式"""
+        try:
+            # 檢查當前是否已在編輯模式
+            if self.檢查是否編輯模式():
+                logger.info("✓ 已經處於編輯模式")
+                return True
+            
+            # 尚未進入編輯模式，嘗試點擊編輯按鈕
+            logger.info("嘗試進入編輯模式...")
+            success = self.點擊編輯按鈕()
+            
+            if success:
                 # 等待頁面加載
                 time.sleep(3)
                 
-                # 檢查是否成功進入編輯模式
+                # 再次檢查是否成功進入編輯模式
                 if self.檢查是否編輯模式():
-                    logger.info("✓ 已成功進入編輯模式")
+                    logger.info("✓ 成功進入編輯模式")
                     return True
-                
-                logger.warning("點擊編輯按鈕後未進入編輯模式，重試...")
-                
-            except Exception as e:
-                logger.error(f"嘗試進入編輯模式時發生錯誤: {str(e)}")
+                else:
+                    logger.warning("⚠ 點擊編輯按鈕後未能進入編輯模式")
             
-            time.sleep(2)
-        
-        # 最後嘗試 - 檢查是否有iframe並嘗試在iframe中搜尋編輯按鈕
-        try:
-            logger.info("檢查頁面中的iframe...")
-            iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
-            
-            if iframes:
-                logger.info(f"找到 {len(iframes)} 個iframe，嘗試在iframe中尋找編輯按鈕")
+            # 使用JavaScript嘗試進入編輯模式
+            logger.info("嘗試使用JavaScript進入編輯模式...")
+            js_result = self.driver.execute_script("""
+                // 檢查當前URL並嘗試修改
+                const currentUrl = window.location.href;
                 
-                for i, iframe in enumerate(iframes):
-                    try:
-                        logger.info(f"切換到iframe {i+1}")
-                        self.driver.switch_to.frame(iframe)
-                        
-                        # 在iframe中尋找編輯按鈕
-                        edit_buttons = self.driver.find_elements(By.XPATH, "//button[contains(text(), '編輯') or contains(text(), 'Edit')]")
-                        if edit_buttons:
-                            logger.info(f"在iframe {i+1}中找到編輯按鈕，點擊...")
-                            edit_buttons[0].click()
-                            time.sleep(3)
-                            
-                            # 切回主框架檢查
-                            self.driver.switch_to.default_content()
-                            if self.檢查是否編輯模式():
-                                logger.info("✓ 已通過iframe按鈕成功進入編輯模式")
-                                return True
-                        
-                        # 切回主框架繼續
-                        self.driver.switch_to.default_content()
-                    except Exception as iframe_err:
-                        logger.warning(f"處理iframe {i+1}時出錯: {str(iframe_err)}")
-                        self.driver.switch_to.default_content()
-        
-        except Exception as iframe_search_err:
-            logger.error(f"搜尋iframe時出錯: {str(iframe_search_err)}")
-            try:
-                self.driver.switch_to.default_content()
-            except:
-                pass
-        
-        logger.error("⚠ 無法進入編輯模式，已嘗試所有方法")
-        return False 
+                // 如果URL不包含edit參數，嘗試添加
+                if (!currentUrl.includes('/edit')) {
+                    // 找到並點擊編輯按鈕
+                    const editButtons = document.querySelectorAll('button');
+                    for (const btn of editButtons) {
+                        if (btn.innerText.includes('編輯') && btn.offsetParent !== null) {
+                            btn.click();
+                            return true;
+                        }
+                    }
+                    
+                    // 嘗試直接修改URL
+                    if (currentUrl.includes('/discount/')) {
+                        const newUrl = currentUrl + '/edit';
+                        window.location.href = newUrl;
+                        return true;
+                    }
+                } else {
+                    // 已經在編輯模式URL
+                    return true;
+                }
+                
+                return false;
+            """)
+            
+            if js_result:
+                logger.info("✓ JavaScript嘗試進入編輯模式")
+                time.sleep(3)
+                
+                if self.檢查是否編輯模式():
+                    logger.info("✓ 成功進入編輯模式")
+                    return True
+            
+            logger.warning("✗ 無法自動進入編輯模式，請手動操作")
+            return False
+            
+        except Exception as e:
+            logger.error(f"進入編輯模式時發生錯誤: {str(e)}")
+            return False 
