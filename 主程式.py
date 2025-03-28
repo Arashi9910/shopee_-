@@ -68,6 +68,11 @@ class 調價主程式:
         # 添加批量處理商品規格按鈕
         self.interface.add_button("批量處理商品規格", self.batch_process_thread)
         
+        # 添加頁數輸入框和多頁處理按鈕
+        self.interface.add_label("處理頁數:")
+        self.頁數輸入 = self.interface.add_entry(default_value="1")
+        self.interface.add_button("多頁批量處理", self.multi_page_process_thread)
+        
         # 創建日誌區域
         self.interface.create_log_area()
         
@@ -102,6 +107,10 @@ class 調價主程式:
     def batch_process_thread(self):
         """在新線程中批量處理商品規格"""
         threading.Thread(target=self.batch_process, daemon=True).start()
+    
+    def multi_page_process_thread(self):
+        """在新線程中執行多頁批量處理"""
+        threading.Thread(target=self.multi_page_process, daemon=True).start()
     
     def start_browser(self):
         """啟動Chrome瀏覽器"""
@@ -233,6 +242,46 @@ class 調價主程式:
             logger.error(f"批量處理商品規格時發生錯誤: {str(e)}")
             self.interface.log_message(f"✗ 錯誤: {str(e)}")
             self.interface.show_error_dialog("錯誤", f"批量處理商品規格時發生錯誤: {str(e)}")
+    
+    def multi_page_process(self):
+        """執行多頁批量處理"""
+        try:
+            # 檢查瀏覽器是否已啟動
+            if not self.driver or not self.browser_controller:
+                self.interface.log_message("✗ 請先啟動或連接Chrome瀏覽器")
+                self.interface.show_warning_dialog("警告", "請先啟動或連接Chrome瀏覽器")
+                return
+            
+            # 獲取用戶輸入的頁數
+            try:
+                頁數 = int(self.頁數輸入.get())
+                if 頁數 < 1:
+                    raise ValueError("頁數必須大於0")
+            except ValueError as e:
+                self.interface.log_message(f"⚠ 頁數輸入錯誤: {str(e)}")
+                self.interface.show_warning_dialog("警告", f"頁數輸入錯誤: {str(e)}\n請輸入一個大於0的整數")
+                return
+            
+            self.interface.log_message(f"開始批量處理 {頁數} 頁商品...")
+            
+            # 初始化商品處理模組
+            product_handler = 商品處理集成(self.driver)
+            
+            # 執行多頁批量處理
+            success = product_handler.搜尋.批量處理多頁商品(頁數)
+            
+            # 顯示處理結果
+            if success:
+                self.interface.log_message(f"✓ 多頁批量處理完成，共處理了 {頁數} 頁商品")
+                self.interface.show_info_dialog("處理結果", f"多頁批量處理完成!\n\n成功處理了 {頁數} 頁商品")
+            else:
+                self.interface.log_message("⚠ 多頁批量處理過程中發生錯誤，請查看日誌了解詳情")
+                self.interface.show_warning_dialog("處理結果", "多頁批量處理過程中發生錯誤，請查看日誌了解詳情")
+            
+        except Exception as e:
+            logger.error(f"多頁批量處理時發生錯誤: {str(e)}")
+            self.interface.log_message(f"✗ 錯誤: {str(e)}")
+            self.interface.show_error_dialog("錯誤", f"多頁批量處理時發生錯誤: {str(e)}")
 
 # 獨立執行此檔案時啟動應用程式
 if __name__ == "__main__":
