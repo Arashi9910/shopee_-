@@ -71,24 +71,28 @@ class 調價主程式:
         # 創建框架
         self.interface.create_frame()
         
-        # 添加啟動瀏覽器按鈕
-        self.interface.add_button("啟動Chrome瀏覽器", self.start_browser_thread)
+        # 第一行按鈕
+        self.interface.add_button("啟動Chrome瀏覽器", self.start_browser_thread, row=0, column=0)
+        self.interface.add_button("連接已開啟的瀏覽器", self.connect_browser_thread, row=0, column=1)
+        self.interface.add_button("編輯折扣活動", self.edit_discount_activity_thread, row=0, column=2)
         
-        # 添加連接瀏覽器按鈕
-        self.interface.add_button("連接已開啟的瀏覽器", self.connect_browser_thread)
+        # 第二行按鈕
+        self.interface.add_button("批量處理商品規格", self.batch_process_thread, row=1, column=0)
         
-        # 添加編輯折扣活動按鈕
-        self.interface.add_button("編輯折扣活動", self.edit_discount_activity_thread)
+        # 創建多頁處理區域 (第二行右側)
+        page_frame = ttk.Frame(self.interface.button_frame)
+        page_frame.grid(row=1, column=1, columnspan=2, sticky=tk.W)
         
-        # 添加批量處理商品規格按鈕
-        self.interface.add_button("批量處理商品規格", self.batch_process_thread)
+        # 添加頁數標籤和輸入框
+        ttk.Label(page_frame, text="處理頁數:").grid(row=0, column=0, padx=(0, 5), sticky=tk.E)
+        self.頁數輸入 = ttk.Entry(page_frame, width=5)
+        self.頁數輸入.insert(0, "1")  # 預設值
+        self.頁數輸入.grid(row=0, column=1, padx=(0, 10), sticky=tk.W)
         
-        # 在新行添加頁數輸入框和多頁處理按鈕
-        頁數標籤 = self.interface.add_label("處理頁數:", row=1, column=0)
-        頁數標籤.grid(sticky=tk.E)
-        self.頁數輸入 = self.interface.add_entry(default_value="1", width=5, row=1, column=1)
-        self.頁數輸入.grid(sticky=tk.W)
-        self.interface.add_button("多頁批量處理", self.multi_page_process_thread, row=1, column=2)
+        # 添加多頁處理按鈕
+        ttk.Button(page_frame, text="多頁批量處理", 
+                  command=self.multi_page_process_thread,
+                  width=20).grid(row=0, column=2)
         
         # 創建日誌區域
         self.interface.create_log_area()
