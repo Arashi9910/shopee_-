@@ -209,6 +209,110 @@ class 商品搜尋:
                                 }
                             }
                             
+                            // 方法2: 如果沒有從文本中找到折扣價格，優先檢查輸入框
+                            // 在編輯模式下，輸入框通常包含實際價格值
+                            if (!foundDiscountPrice) {
+                                console.log("從文本中未找到折扣價格，檢查輸入框...");
+                                // 查找輸入框
+                                const inputs = specElem.querySelectorAll('input[type="text"], input:not([type]), input.eds-input__input, input[class*="price"], input[class*="discount"]');
+                                console.log(`找到 ${inputs.length} 個輸入框`);
+                                
+                                if (inputs.length > 0) {
+                                    // 第一遍：尋找帶有折扣相關標籤的輸入框
+                                    for (let i = 0; i < inputs.length; i++) {
+                                        const input = inputs[i];
+                                        // 記錄輸入框的信息
+                                        console.log(`輸入框${i+1}: placeholder="${input.placeholder}", value="${input.value}"`);
+                                        
+                                        // 獲取相關的標籤文本
+                                        const nearestLabel = findNearestLabel(input);
+                                        if (nearestLabel) {
+                                            console.log(`輸入框${i+1}相關標籤: "${nearestLabel}"`);
+                                            
+                                            // 檢查是否是折扣價相關的輸入框
+                                            const isDiscountInput = 
+                                                nearestLabel.includes('優惠') || 
+                                                nearestLabel.includes('折扣') || 
+                                                nearestLabel.includes('特價') ||
+                                                nearestLabel.includes('促銷') ||
+                                                input.name && (
+                                                    input.name.includes('discount') ||
+                                                    input.name.includes('sale') ||
+                                                    input.name.includes('special')
+                                                );
+                                                
+                                            // 檢查是否是原價相關的輸入框
+                                            const isOriginalInput = 
+                                                nearestLabel.includes('原價') || 
+                                                nearestLabel.includes('定價') ||
+                                                input.name && (
+                                                    input.name.includes('original') ||
+                                                    input.name.includes('regular')
+                                                );
+                                            
+                                            // 優先處理折扣價輸入框
+                                            if (isDiscountInput && input.value && !isNaN(parseFloat(input.value)) && parseFloat(input.value) > 0) {
+                                                // 檢查是否是折扣率（小於10通常是折扣率如7折）或折扣價
+                                                if (parseFloat(input.value) < 10 && !nearestLabel.includes('特價') && !nearestLabel.includes('優惠價')) {
+                                                    discountRate = input.value;
+                                                    console.log(`找到折扣率: ${discountRate}`);
+                                                    
+                                                    // 如果有原價，計算折扣價
+                                                    if (originalPrice) {
+                                                        price = Math.round(parseFloat(originalPrice) * parseFloat(discountRate) / 10).toString();
+                                                        priceType = '折扣率計算價';
+                                                        console.log(`從折扣率計算折扣價: ${price} = ${originalPrice} × ${discountRate}/10`);
+                                                        foundDiscountPrice = true;
+                                                    }
+                                                } else {
+                                                    price = input.value;
+                                                    priceType = '輸入框折扣價';
+                                                    console.log(`從折扣輸入框獲取價格: ${price}`);
+                                                    // 高亮這個輸入框幫助診斷
+                                                    input.style.border = '3px solid blue';
+                                                    foundDiscountPrice = true;
+                                                }
+                                            } 
+                                            // 保存原價信息
+                                            else if (isOriginalInput && input.value && !isNaN(parseFloat(input.value))) {
+                                                originalPrice = input.value;
+                                                console.log(`從輸入框獲取原價: ${originalPrice}`);
+                                            }
+                                        }
+                                    }
+                                    
+                                    // 第二遍：如果仍未找到折扣價，根據輸入框位置進行猜測
+                                    // 在蝦皮的編輯界面中，通常第二個輸入框是折扣價，第一個是原價
+                                    if (!foundDiscountPrice && inputs.length >= 2) {
+                                        // 檢查第二個輸入框是否有值
+                                        if (inputs[1].value && !isNaN(parseFloat(inputs[1].value)) && parseFloat(inputs[1].value) > 0) {
+                                            price = inputs[1].value;
+                                            priceType = '第二輸入框折扣價';
+                                            console.log(`從第二輸入框獲取折扣價: ${price}`);
+                                            // 高亮這個輸入框
+                                            inputs[1].style.border = '3px solid purple';
+                                            foundDiscountPrice = true;
+                                            
+                                            // 如果第一個輸入框有值，可能是原價
+                                            if (!originalPrice && inputs[0].value && !isNaN(parseFloat(inputs[0].value))) {
+                                                originalPrice = inputs[0].value;
+                                                console.log(`從第一輸入框獲取原價: ${originalPrice}`);
+                                            }
+                                        }
+                                    }
+                                    
+                                    // 如果只有一個輸入框且還沒找到折扣價，使用它的值
+                                    if (!foundDiscountPrice && inputs.length == 1 && inputs[0].value && !isNaN(parseFloat(inputs[0].value))) {
+                                        price = inputs[0].value;
+                                        priceType = '單一輸入框';
+                                        console.log(`從唯一輸入框獲取價格: ${price}`);
+                                        // 高亮這個輸入框
+                                        inputs[0].style.border = '3px solid orange';
+                                        foundDiscountPrice = true;
+                                    }
+                                }
+                            }
+                            
                             // 如果找到了折扣率和原價，但沒有明確的折扣價，計算折扣價
                             if (!foundDiscountPrice && discountRate && originalPrice) {
                                 const calcDiscountPrice = Math.round(parseFloat(originalPrice) * parseFloat(discountRate) / 10);
@@ -216,114 +320,6 @@ class 商品搜尋:
                                 priceType = '計算折扣價';
                                 console.log(`計算得到折扣價: ${price}, 原價: ${originalPrice}, 折扣率: ${discountRate}`);
                                 foundDiscountPrice = true;
-                            }
-                            
-                            // 方法2: 如果沒有找到明確的折扣價，嘗試從頁面直接獲取
-                            if (price === '0' || priceType === '折扣率' || priceType === '未知') {
-                                // 深度遍歷元素找尋價格
-                                let allElements = [];
-                                function getAllTextElements(elem) {
-                                    if (elem.childNodes.length === 0 && elem.textContent.trim()) {
-                                        allElements.push(elem);
-                                    } else {
-                                        for (const child of elem.childNodes) {
-                                            if (child.nodeType === 1) { // 元素節點
-                                                getAllTextElements(child);
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                getAllTextElements(specElem);
-                                
-                                // 查找包含NT$的元素，優先獲取折扣價
-                                let bestPrice = null;
-                                let bestOrigPrice = null;
-                                for (const elem of allElements) {
-                                    const text = elem.textContent.trim();
-                                    if (text.includes('NT$')) {
-                                        const priceInfo = extractPriceInfo(text);
-                                        if (priceInfo.discountPrice) {
-                                            bestPrice = priceInfo.discountPrice;
-                                            bestOrigPrice = priceInfo.originalPrice || bestOrigPrice;
-                                            break;
-                                        }
-                                    }
-                                }
-                                
-                                if (bestPrice) {
-                                    price = bestPrice;
-                                    originalPrice = bestOrigPrice || originalPrice;
-                                    priceType = '深度折扣價';
-                                    console.log(`深度找到折扣價: ${price}, 原價: ${originalPrice}`);
-                                }
-                            }
-                            
-                            // 方法3: 如果還是沒有找到價格，嘗試查找並點擊輸入欄位
-                            if (!foundDiscountPrice && (price === '0' || priceType === '折扣率' || priceType === '未知')) {
-                                // 查找輸入框
-                                const inputs = specElem.querySelectorAll('input.eds-input__input');
-                                console.log(`找到 ${inputs.length} 個輸入框`);
-                                
-                                if (inputs.length > 0) {
-                                    // 遍歷所有輸入框，優先取折扣價輸入框
-                                    for (let i = 0; i < inputs.length; i++) {
-                                        const input = inputs[i];
-                                        // 記錄輸入框的placeholder和value
-                                        console.log(`輸入框${i+1}: placeholder="${input.placeholder}", value="${input.value}"`);
-                                        
-                                        // 尋找離最近的label，可能包含"優惠價"或"折扣"字樣
-                                        const nearestLabel = findNearestLabel(input);
-                                        if (nearestLabel) {
-                                            console.log(`輸入框${i+1}相關標籤: "${nearestLabel}"`);
-                                            
-                                            // 優先取含有折扣相關字樣的輸入框
-                                            if (nearestLabel.includes('優惠') || 
-                                                nearestLabel.includes('折扣') || 
-                                                nearestLabel.includes('特價')) {
-                                                if (input.value && parseFloat(input.value) > 0) {
-                                                    price = input.value;
-                                                    priceType = '折扣輸入';
-                                                    console.log(`從折扣相關輸入框獲取價格: ${price}`);
-                                                    foundDiscountPrice = true;
-                                                    // 高亮這個輸入框
-                                                    input.style.border = '3px solid blue';
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    
-                                    // 如果還沒找到，優先取第二個輸入框（通常是折扣價）
-                                    if (!foundDiscountPrice && inputs.length > 1) {
-                                        const inputValue = inputs[1].value;
-                                        if (inputValue && parseFloat(inputValue) > 0) {
-                                            price = inputValue;
-                                            priceType = '第二輸入框';
-                                            console.log(`從第二輸入框獲取價格: ${price}`);
-                                            foundDiscountPrice = true;
-                                            // 高亮這個輸入框
-                                            inputs[1].style.border = '3px solid purple';
-                                        }
-                                    } 
-                                    // 最後，如果還沒找到則使用第一個輸入框
-                                    else if (!foundDiscountPrice && inputs[0].value && parseFloat(inputs[0].value) > 0) {
-                                        price = inputs[0].value;
-                                        priceType = '第一輸入框';
-                                        console.log(`從第一輸入框獲取價格: ${price}`);
-                                        // 高亮這個輸入框
-                                        inputs[0].style.border = '3px solid orange';
-                                    }
-                                }
-                            }
-                            
-                            // 方法4: 如果我們有折扣率和原價，但沒有折扣價，計算折扣價
-                            if (!foundDiscountPrice && (price === '0' || price === discountRate || priceType === '折扣率') && discountRate && originalPrice) {
-                                // 用折扣率和原價計算折扣價
-                                const calcDiscountPrice = Math.round(parseFloat(originalPrice) * parseFloat(discountRate) / 10);
-                                price = calcDiscountPrice.toString();
-                                priceType = '計算折扣價';
-                                console.log(`最終計算折扣價: ${price} = ${originalPrice} × ${discountRate}/10`);
                             }
                             
                             // 如果price依然是折扣率（數字小於10），設置為價格類型為特殊標記
