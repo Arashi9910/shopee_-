@@ -13,7 +13,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from selenium.webdriver.common.action_chains import ActionChains
 
 # 設置日誌
 logger = logging.getLogger(__name__)
@@ -154,7 +153,8 @@ class 商品搜尋:
                                         console.log(`從折扣標記找到價格: ${price}, 文本="${item.text}"`);
                                         foundDiscountPrice = true;
                                         
-                                        // 移除高亮元素標記
+                                        // 高亮該元素，幫助診斷
+                                        item.element.style.border = '3px solid green';
                                         break;
                                     }
                                 }
@@ -184,7 +184,8 @@ class 商品搜尋:
                                                 input: input,
                                                 index: i
                                             });
-                                            // 不再標記NT$輸入框
+                                            // 標記找到的NT$輸入框
+                                            input.style.border = '3px solid green';
                                         }
                                     }
                                     
@@ -196,7 +197,8 @@ class 商品搜尋:
                                             input: input,
                                             index: i
                                         });
-                                        // 不再標記NT$輸入框
+                                        // 標記找到的NT$輸入框
+                                        input.style.border = '3px solid blue';
                                     }
                                 }
                                 
@@ -228,7 +230,7 @@ class 商品搜尋:
                                         if (firstValue > 10 && secondValue < 10) {
                                             price = firstInput.value;
                                             priceType = '第一輸入框特價';
-                                            // 不再標記特價輸入框
+                                            firstInput.style.border = '3px solid purple';
                                             console.log(`從第一輸入框獲取特價: ${price} (第二輸入框可能是折扣率: ${secondValue})`);
                                             foundDiscountPrice = true;
                                         }
@@ -236,7 +238,7 @@ class 商品搜尋:
                                         else if (firstValue < 10 && secondValue > 10) {
                                             price = secondInput.value;
                                             priceType = '第二輸入框特價';
-                                            // 不再標記特價輸入框
+                                            secondInput.style.border = '3px solid orange';
                                             console.log(`從第二輸入框獲取特價: ${price} (第一輸入框可能是折扣率: ${firstValue})`);
                                             foundDiscountPrice = true;
                                         }
@@ -244,7 +246,7 @@ class 商品搜尋:
                                         else if (firstValue > 10) {
                                             price = firstInput.value;
                                             priceType = '預設特價輸入框';
-                                            // 不再標記特價輸入框
+                                            firstInput.style.border = '3px solid yellow';
                                             console.log(`使用第一輸入框值作為特價: ${price}`);
                                             foundDiscountPrice = true;
                                         }
@@ -254,7 +256,7 @@ class 商品搜尋:
                                 else if (priceInputs.length === 1 && priceInputs[0].value && !isNaN(parseFloat(priceInputs[0].value)) && parseFloat(priceInputs[0].value) > 10) {
                                     price = priceInputs[0].value;
                                     priceType = '單一特價輸入框';
-                                    // 不再標記特價輸入框
+                                    priceInputs[0].style.border = '3px solid cyan';
                                     console.log(`從單一輸入框獲取特價: ${price}`);
                                     foundDiscountPrice = true;
                                 }
@@ -276,7 +278,7 @@ class 商品搜尋:
                                             price = ntMatch[1];
                                             priceType = '單一價格文本';
                                             console.log(`從單一價格文本找到價格: ${price}, 文本="${item.text}"`);
-                                            // 不再標記元素
+                                            item.element.style.border = '3px solid purple';
                                             foundDiscountPrice = true;
                                             break;
                                         } else if (allPrices && allPrices.length > 1) {
@@ -285,7 +287,7 @@ class 商品搜尋:
                                             price = lastPrice;
                                             priceType = '多價格文本';
                                             console.log(`從多價格文本找到價格: ${price}, 文本="${item.text}"`);
-                                            // 不再標記元素
+                                            item.element.style.border = '3px solid yellow';
                                             foundDiscountPrice = true;
                                             break;
                                         }
@@ -335,7 +337,7 @@ class 商品搜尋:
                                         price = ntMatch[1];
                                         priceType = '通用價格文本';
                                         console.log(`從通用文本找到價格: ${price}, 文本="${item.text}"`);
-                                        // 不再標記元素
+                                        item.element.style.border = '3px solid cyan';
                                         foundDiscountPrice = true;
                                         break;
                                     }
@@ -694,47 +696,141 @@ class 商品搜尋:
             return {"product_count": 0, "spec_count": 0, "products": []} 
 
     def 檢查是否編輯模式(self):
-        """檢查當前是否處於編輯模式"""
+        """檢查當前頁面是否處於編輯模式
+        
+        Returns:
+            bool: 是否處於編輯模式
+        """
         try:
             logger.info("檢查是否處於編輯模式...")
             
-            # 檢查當前URL
+            # 檢查URL是否包含特定的編輯標識
             current_url = self.driver.current_url
             logger.info(f"當前URL: {current_url}")
             
-            # 檢查URL是否包含編輯相關的參數
-            if 'edit' in current_url.lower() or 'discount/edit' in current_url.lower():
-                logger.info("URL包含編輯相關參數")
+            # 檢查URL是否明確指示編輯模式
+            if '/edit' in current_url:
+                logger.info("✓ URL顯示處於編輯模式")
                 return True
-            
-            # 使用JavaScript檢查頁面元素
+                
+            # 檢查頁面上是否仍有"編輯活動"按鈕 - 如果有，說明未進入編輯模式
+            edit_activity_buttons = self.driver.find_elements(By.XPATH, "//button[contains(text(), '編輯活動')]")
+            visible_edit_buttons = [btn for btn in edit_activity_buttons if btn.is_displayed()]
+            if visible_edit_buttons:
+                logger.info("⚠ 頁面上仍有「編輯活動」按鈕，表示未進入編輯模式")
+                return False
+
+            # 使用JavaScript詳細檢查頁面上的編輯模式指示元素和URL
             is_edit_mode = self.driver.execute_script("""
-                // 檢查是否存在編輯模式特有的元素
-                const editElements = document.querySelectorAll('.eds-switch, .discount-edit-item, .discount-edit-item-model-component');
-                if (editElements.length > 0) {
-                    return true;
+                // 檢查URL是否包含編輯相關的字段
+                const url = window.location.href;
+                if (url.includes('/edit')) {
+                    console.log('URL顯示處於編輯模式');
+                    return {isEditMode: true, reason: 'URL包含/edit'};
                 }
                 
-                // 檢查是否存在編輯按鈕
-                const editButtons = Array.from(document.querySelectorAll('button')).filter(btn => 
-                    btn.textContent.includes('編輯') || 
-                    btn.textContent.includes('編輯活動') || 
-                    btn.textContent.includes('編輯折扣')
+                // 檢查是否有確認按鈕，確認按鈕通常只在編輯模式出現
+                const confirmButtons = document.querySelectorAll('.eds-button--confirm, .btn-confirm, button[type="submit"], button:contains("確認"), button:contains("保存")');
+                if (confirmButtons.length > 0) {
+                    for (const btn of confirmButtons) {
+                        if (btn.offsetParent !== null) {
+                            console.log('找到確認按鈕，處於編輯模式');
+                            return {isEditMode: true, reason: '找到確認按鈕'};
+                        }
+                    }
+                }
+                
+                // 檢查是否有可操作的開關元素
+                const switches = document.querySelectorAll('.eds-switch');
+                let hasInteractableSwitches = false;
+                let totalSwitches = 0;
+                
+                for (const switchEl of switches) {
+                    totalSwitches++;
+                    // 檢查開關是否可互動
+                    if (!switchEl.classList.contains('eds-switch--disabled') && 
+                        switchEl.offsetParent !== null) {
+                        hasInteractableSwitches = true;
+                    }
+                }
+                
+                if (hasInteractableSwitches) {
+                    console.log('找到可互動的開關元素，處於編輯模式');
+                    return {isEditMode: true, reason: '找到可互動的開關元素'};
+                }
+                
+                // 檢查是否有可編輯的輸入框
+                const inputs = document.querySelectorAll('input:not([type="hidden"]), textarea');
+                let hasEditableInputs = false;
+                let totalInputs = 0;
+                
+                for (const input of inputs) {
+                    totalInputs++;
+                    if (!input.disabled && !input.readOnly && 
+                        input.offsetParent !== null &&
+                        getComputedStyle(input).display !== 'none') {
+                        hasEditableInputs = true;
+                    }
+                }
+                
+                if (hasEditableInputs) {
+                    console.log('找到可編輯的輸入框，處於編輯模式');
+                    return {isEditMode: true, reason: '找到可編輯的輸入框'};
+                }
+                
+                // 檢查是否有「編輯活動」按鈕 - 如果有，說明未處於編輯模式
+                const editActivityBtn = Array.from(document.querySelectorAll('button')).find(
+                    btn => btn.textContent.includes('編輯活動') && btn.offsetParent !== null
                 );
-                if (editButtons.length > 0) {
-                    return false;
+                
+                if (editActivityBtn) {
+                    console.log('找到「編輯活動」按鈕，未處於編輯模式');
+                    return {isEditMode: false, reason: '找到「編輯活動」按鈕'};
                 }
                 
-                return false;
+                // 返回診斷結果
+                return {
+                    isEditMode: false, 
+                    reason: '未檢測到編輯模式特徵',
+                    diagnostics: {
+                        totalSwitches,
+                        hasInteractableSwitches,
+                        totalInputs,
+                        hasEditableInputs,
+                        url
+                    }
+                };
             """)
             
-            if is_edit_mode:
-                logger.info("✓ 檢測到編輯模式元素")
-                return True
-            else:
-                logger.info("✗ 未檢測到編輯模式元素")
-                return False
+            # 記錄檢查結果和原因
+            if isinstance(is_edit_mode, dict):
+                edit_mode = is_edit_mode.get('isEditMode', False)
+                reason = is_edit_mode.get('reason', '未知原因')
+                diagnostics = is_edit_mode.get('diagnostics', {})
                 
+                if edit_mode:
+                    logger.info(f"✓ 檢測到編輯模式: {reason}")
+                else:
+                    logger.info(f"⚠ 未檢測到編輯模式: {reason}")
+                    logger.debug(f"診斷信息: {diagnostics}")
+                
+                return edit_mode
+            else:
+                if is_edit_mode:
+                    logger.info("✓ 檢測到編輯模式元素")
+                    return True
+            
+            # 額外檢查: 嘗試截圖
+            try:
+                screenshot_path = "edit_mode_check.png"
+                self.driver.save_screenshot(screenshot_path)
+                logger.info(f"已保存頁面截圖到 {screenshot_path} 用於診斷")
+            except:
+                pass
+            
+            logger.info("⚠ 未檢測到編輯模式元素")
+            return False
+            
         except Exception as e:
             logger.error(f"檢查編輯模式時發生錯誤: {str(e)}")
             return False
@@ -755,7 +851,9 @@ class 商品搜尋:
                         self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
                         time.sleep(0.5)
                         
-                        # 不再高亮顯示按鈕
+                        # 高亮顯示按鈕
+                        self.driver.execute_script("arguments[0].style.border='5px solid red'; arguments[0].style.background='yellow';", button)
+                        
                         logger.info("嘗試點擊「編輯活動」按鈕...")
                         try:
                             # 嘗試多種點擊方式
@@ -806,6 +904,9 @@ class 商品搜尋:
                         self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
                         time.sleep(0.5)
                         
+                        # 高亮顯示按鈕
+                        self.driver.execute_script("arguments[0].style.border='3px solid red';", button)
+                        
                         # 點擊按鈕
                         try:
                             button.click()
@@ -833,7 +934,9 @@ class 商品搜尋:
                         if (elemText.includes(text) && elem.offsetParent !== null) {
                             console.log(`找到符合文字「${text}」的按鈕: ${elemText}`);
                             
-                            // 記錄按鈕信息，但不改變按鈕樣式
+                            // 讓按鈕更顯眼，方便診斷
+                            elem.style.border = '5px solid red';
+                            elem.style.backgroundColor = 'yellow';
                             
                             try {
                                 // 嘗試各種方式激活按鈕
@@ -886,6 +989,7 @@ class 商品搜尋:
                 for (const btn of specialButtons) {
                     if (btn.offsetParent !== null) {
                         console.log('找到具有特定類名的編輯按鈕:', btn);
+                        btn.style.border = '3px solid blue';
                         
                         // 嘗試點擊
                         try {
@@ -1009,183 +1113,4 @@ class 商品搜尋:
             
         except Exception as e:
             logger.error(f"進入編輯模式時發生錯誤: {str(e)}")
-            return False
-    
-    def 前往下一頁(self):
-        """點擊下一頁按鈕，進入下一頁商品列表"""
-        logger.info("嘗試前往下一頁...")
-        
-        try:
-            # 嘗試找到下一頁按鈕
-            next_button = self.driver.execute_script("""
-                // 尋找下一頁按鈕
-                const nextButtons = document.querySelectorAll('.eds-pager__button-next, button[class*="next"], button:has(i.eds-icon svg path[d*="9.18933983,8 L5.21966991,11.9696699"])');
-                
-                if (nextButtons.length > 0) {
-                    for (const btn of nextButtons) {
-                        // 檢查按鈕是否可見
-                        if (btn.offsetParent !== null) {
-                            const rect = btn.getBoundingClientRect();
-                            if (rect.width > 0 && rect.height > 0) {
-                                // 僅在控制台標記找到的按鈕，不改變頁面顯示
-                                console.log('找到下一頁按鈕', btn);
-                                return btn;
-                            }
-                        }
-                    }
-                }
-                return null;
-            """)
-            
-            if next_button:
-                logger.info("找到下一頁按鈕")
-                
-                # 確保按鈕在視野內，滾動行為更像人類操作
-                self.driver.execute_script("""
-                    // 緩慢滾動到按鈕位置
-                    let button = arguments[0];
-                    let scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-                    let targetPosition = button.getBoundingClientRect().top + scrollTop - 200;
-                    
-                    // 使用平滑滾動效果
-                    window.scrollTo({
-                        top: targetPosition,
-                        behavior: 'smooth'
-                    });
-                """, next_button)
-                
-                # 等待滾動完成
-                time.sleep(1.5)
-                
-                # 模擬滑鼠移動到按鈕上
-                self.driver.execute_script("""
-                    // 模擬滑鼠懸停操作
-                    const button = arguments[0];
-                    const mouseoverEvent = new MouseEvent('mouseover', {
-                        bubbles: true,
-                        cancelable: true,
-                        view: window
-                    });
-                    button.dispatchEvent(mouseoverEvent);
-                """, next_button)
-                
-                # 等待滑鼠事件生效
-                time.sleep(0.5)
-                
-                # 使用原生的WebDriver點擊
-                try:
-                    # 首先嘗試使用原生點擊
-                    actions = ActionChains(self.driver)
-                    actions.move_to_element(next_button).pause(0.3).click().perform()
-                    logger.info("已使用ActionChains點擊下一頁按鈕")
-                except Exception as e:
-                    logger.warning(f"ActionChains點擊失敗: {str(e)}，嘗試使用JavaScript點擊")
-                    # 在原生點擊失敗的情況下，使用更溫和的JavaScript點擊
-                    self.driver.execute_script("""
-                        // 先發送mousedown事件
-                        const button = arguments[0];
-                        const mousedownEvent = new MouseEvent('mousedown', {
-                            bubbles: true,
-                            cancelable: true,
-                            view: window
-                        });
-                        button.dispatchEvent(mousedownEvent);
-                        
-                        // 短暫等待後發送click事件
-                        setTimeout(() => {
-                            const clickEvent = new MouseEvent('click', {
-                                bubbles: true,
-                                cancelable: true,
-                                view: window
-                            });
-                            button.dispatchEvent(clickEvent);
-                        }, 100);
-                    """, next_button)
-                    logger.info("已使用JavaScript模擬點擊下一頁按鈕")
-                
-                # 等待頁面加載，時間更長以確保加載完成
-                time.sleep(5)
-                
-                # 確認是否成功翻頁
-                current_url = self.driver.current_url
-                logger.info(f"翻頁後的URL: {current_url}")
-                
-                # 檢查URL是否變成404頁面
-                if "404" in current_url or "error" in current_url:
-                    logger.error("點擊後跳轉到錯誤頁面")
-                    return False
-                
-                # 等待頁面上的新商品加載出來
-                try:
-                    WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "div.discount-item-component, div.discount-edit-item"))
-                    )
-                    logger.info("成功載入下一頁商品")
-                except TimeoutException:
-                    logger.warning("等待新頁面商品元素超時")
-                
-                return True
-            else:
-                logger.warning("未找到下一頁按鈕，可能已是最後一頁")
-                return False
-        
-        except Exception as e:
-            logger.error(f"前往下一頁時發生錯誤: {str(e)}")
-            return False
-    
-    def 批量處理多頁商品(self, 頁數=1):
-        """處理多頁商品的函數
-        
-        Args:
-            頁數: 要處理的頁數，默認為1頁
-            
-        Returns:
-            bool: 是否成功完成所有頁的處理
-        """
-        from .批量處理 import 批量處理
-        
-        logger.info(f"開始批量處理，計劃處理 {頁數} 頁商品")
-        
-        當前頁 = 1
-        總處理數 = 0
-        總開關成功數 = 0
-        總價格成功數 = 0
-        
-        while 當前頁 <= 頁數:
-            logger.info(f"正在處理第 {當前頁}/{頁數} 頁")
-            
-            # 首先確保當前頁面處於編輯模式
-            if not self.檢查是否編輯模式():
-                if not self.進入編輯模式():
-                    logger.error(f"無法進入編輯模式，停止第 {當前頁} 頁處理")
-                    return False
-            
-            # 搜尋當前頁的商品
-            products = self.搜尋商品()
-            
-            if products:
-                logger.info(f"第 {當前頁} 頁找到 {len(products)} 個商品")
-                
-                # 使用批量處理模組處理商品
-                批量處理器 = 批量處理(self.driver)
-                處理數, 開關成功數, 價格成功數 = 批量處理器.批量處理商品規格(products)
-                
-                總處理數 += 處理數
-                總開關成功數 += 開關成功數
-                總價格成功數 += 價格成功數
-                
-                logger.info(f"第 {當前頁} 頁處理完成: 處理 {處理數} 個規格，開啟 {開關成功數} 個，調整價格 {價格成功數} 個")
-            else:
-                logger.warning(f"第 {當前頁} 頁未找到商品")
-            
-            # 如果不是最後一頁，前往下一頁
-            if 當前頁 < 頁數:
-                if not self.前往下一頁():
-                    logger.warning(f"無法前往下一頁，提前結束於第 {當前頁} 頁")
-                    break
-                time.sleep(3)  # 等待新頁面加載
-            
-            當前頁 += 1
-        
-        logger.info(f"多頁批量處理完成: 總共 {總處理數} 個規格，開啟 {總開關成功數} 個，調整價格 {總價格成功數} 個")
-        return True 
+            return False 

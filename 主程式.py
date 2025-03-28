@@ -68,10 +68,12 @@ class 調價主程式:
         # 添加批量處理商品規格按鈕
         self.interface.add_button("批量處理商品規格", self.batch_process_thread)
         
-        # 添加頁數輸入框和多頁處理按鈕
-        self.interface.add_label("處理頁數:")
-        self.頁數輸入 = self.interface.add_entry(default_value="1")
-        self.interface.add_button("多頁批量處理", self.multi_page_process_thread)
+        # 在新行添加頁數輸入框和多頁處理按鈕
+        頁數標籤 = self.interface.add_label("處理頁數:", row=1, column=0)
+        頁數標籤.grid(sticky=tk.E)
+        self.頁數輸入 = self.interface.add_entry(default_value="1", width=5, row=1, column=1)
+        self.頁數輸入.grid(sticky=tk.W)
+        self.interface.add_button("多頁批量處理", self.multi_page_process_thread, row=1, column=2)
         
         # 創建日誌區域
         self.interface.create_log_area()

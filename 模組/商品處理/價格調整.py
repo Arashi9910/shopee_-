@@ -49,7 +49,6 @@ class 價格調整:
                         
                         # 使用JavaScript突出顯示元素
                         self.driver.execute_script("arguments[0].style.background='yellow'; arguments[0].scrollIntoView({block: 'center'});", spec_elem)
-                        time.sleep(0.5)
                         
                         # 向上尋找規格行
                         spec_row = self.driver.execute_script("""
@@ -115,7 +114,7 @@ class 價格調整:
                                                     continue;
                                                 }
                                                 
-                                                input.style.border = '3px solid blue';
+                                                // 不再設置輸入框樣式
                                                 console.log('找到折扣價輸入框(NT$前綴)');
                                                 return input;
                                             }
@@ -131,7 +130,7 @@ class 價格調整:
                                         if (firstInputParent) {
                                             const firstPrefix = firstInputParent.querySelector('.eds-input__prefix');
                                             if (firstPrefix && firstPrefix.textContent.includes('NT$')) {
-                                                firstInput.style.border = '3px solid blue';
+                                                // 不再設置輸入框樣式
                                                 console.log('找到可能的特價輸入框(第一個NT$輸入框)');
                                                 return firstInput;
                                             }
@@ -151,7 +150,7 @@ class 價格調整:
                                             
                                             // 如果找到折扣價輸入框
                                             if (isDiscount) {
-                                                input.style.border = '3px solid blue';
+                                                // 不再設置輸入框樣式
                                                 console.log('找到折扣價輸入框(特殊類名)');
                                                 return input;
                                             }
@@ -170,22 +169,22 @@ class 價格調整:
                                         
                                         if (firstValue > 10 && secondValue < 10) {
                                             // 值模式符合：第一個是特價，第二個是折扣率
-                                            allInputs[0].style.border = '3px solid blue';
+                                            // 不再設置輸入框樣式
                                             console.log('找到可能的特價輸入框(第一個輸入框，值大於10)');
                                             return allInputs[0];
                                         } else if (firstValue < 10 && secondValue > 10) {
                                             // 這種情況不太常見：第一個是折扣率，第二個是特價
-                                            allInputs[1].style.border = '3px solid blue';
+                                            // 不再設置輸入框樣式
                                             console.log('找到可能的特價輸入框(第二個輸入框，值大於10)');
                                             return allInputs[1];
                                         } else {
                                             // 無法通過值區分時，默認使用第一個輸入框
-                                            allInputs[0].style.border = '3px solid blue';
+                                            // 不再設置輸入框樣式
                                             console.log('找到可能的特價輸入框(預設第一個輸入框)');
                                             return allInputs[0];
                                         }
                                     } else if (allInputs.length === 1) {
-                                        allInputs[0].style.border = '3px solid blue';
+                                        // 不再設置輸入框樣式
                                         console.log('找到單個輸入框');
                                         return allInputs[0];
                                     }
