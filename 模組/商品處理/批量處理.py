@@ -63,6 +63,19 @@ class 批量處理:
                 規格名稱 = 規格.get("name", f"未命名規格_{spec_idx}")
                 參考價格 = 規格.get("price", 0)
                 
+                # 確保參考價格是數字類型
+                try:
+                    # 如果是字符串，轉換為數字
+                    if isinstance(參考價格, str):
+                        # 移除非數字字符（例如貨幣符號）
+                        參考價格 = 參考價格.replace(',', '')
+                        參考價格 = ''.join(c for c in 參考價格 if c.isdigit() or c == '.')
+                        參考價格 = float(參考價格) if 參考價格 else 0
+                    參考價格 = float(參考價格)  # 確保轉換為浮點數
+                except (ValueError, TypeError):
+                    logger.warning(f"⚠ 規格 '{規格名稱}' 的參考價格 '{規格.get('price')}' 無法轉換為數字，設為0")
+                    參考價格 = 0
+                
                 # 增加規格處理計數
                 總處理規格數 += 1
                 
