@@ -454,8 +454,7 @@ class 調價主程式:
             # 確保在編輯模式
             if not product_handler.搜尋.檢查是否編輯模式():
                 self.interface.log_message("嘗試進入編輯模式...")
-                success = product_handler.進入編輯模式()
-                if not success:
+                if not product_handler.搜尋.進入編輯模式():
                     self.interface.log_message("⚠ 無法進入編輯模式，可能需要手動操作")
                     self.interface.show_warning_dialog("警告", "無法進入編輯模式，請手動點擊編輯按鈕後再試")
                     return
@@ -463,12 +462,51 @@ class 調價主程式:
             
             # 執行多頁批量處理
             try:
-                success = product_handler.搜尋.批量處理多頁商品(頁數)
+                # 清空現有記錄
+                self.紀錄器.清空記錄()
+                
+                # 執行多頁處理
+                self.interface.log_message(f"開始處理 {頁數} 頁商品...")
+                多頁處理結果 = product_handler.搜尋.批量處理多頁商品(頁數)
+                
+                # 確認返回值格式
+                if isinstance(多頁處理結果, tuple) and len(多頁處理結果) >= 4:
+                    success, 已處理頁數, 處理結果摘要, 多頁調整記錄 = 多頁處理結果
+                    
+                    # 處理結果摘要包含總規格數、開關成功數和價格成功數
+                    if isinstance(處理結果摘要, dict):
+                        總處理規格數 = 處理結果摘要.get("總處理規格數", 0)
+                        總開關成功數 = 處理結果摘要.get("總開關成功數", 0)
+                        總價格成功數 = 處理結果摘要.get("總價格成功數", 0)
+                        
+                        # 將多頁處理的記錄加入到記錄管理器
+                        if 多頁調整記錄:
+                            self.interface.log_message(f"處理完成，記錄 {len(多頁調整記錄)} 個調整項目...")
+                            for 記錄 in 多頁調整記錄:
+                                self.紀錄器.批量添加記錄(記錄)
+                            
+                            # 輸出Excel報表
+                            excel_path = self.紀錄器.輸出Excel報表()
+                            if excel_path:
+                                self.紀錄器.添加統計摘要(excel_path, 總處理規格數, 總價格成功數, 總處理規格數 - 總價格成功數)
+                                self.interface.log_message(f"✓ 已將調整記錄保存至: {excel_path}")
+                                
+                                # 打開報表目錄
+                                os.startfile(os.path.dirname(excel_path))
+                            else:
+                                self.interface.log_message("⚠ 無法生成調整記錄Excel")
+                else:
+                    success = False if 多頁處理結果 is None else 多頁處理結果
+                    總處理規格數 = 0
+                    總開關成功數 = 0
+                    總價格成功數 = 0
                 
                 # 顯示處理結果
                 if success:
-                    self.interface.log_message(f"✓ 多頁批量處理完成，共處理了 {頁數} 頁商品")
-                    self.interface.show_info_dialog("處理結果", f"多頁批量處理完成!\n\n成功處理了 {頁數} 頁商品")
+                    結果訊息 = f"多頁批量處理完成!\n\n成功處理了 {已處理頁數}/{頁數} 頁商品\n總共 {總處理規格數} 個規格\n開啟 {總開關成功數} 個\n調整價格 {總價格成功數} 個"
+                    
+                    self.interface.log_message(f"✓ {結果訊息.replace('!', '').replace('\n', ' ')}")
+                    self.interface.show_info_dialog("處理結果", 結果訊息)
                 else:
                     self.interface.log_message("⚠ 多頁批量處理過程中發生錯誤，請查看日誌了解詳情")
                     self.interface.show_warning_dialog("處理結果", "多頁批量處理過程中發生錯誤，請查看日誌了解詳情")

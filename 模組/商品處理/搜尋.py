@@ -1038,65 +1038,42 @@ class 商品搜尋:
             logger.error(f"前往下一頁時發生錯誤: {str(e)}")
             return False
     
-    def 批量處理多頁商品(self, 頁數=1):
-        """批量處理多頁商品
+    def 批量處理多頁商品(self, 頁數):
+        """批量處理多頁商品的規格
         
         Args:
             頁數 (int): 要處理的頁數
             
         Returns:
-            bool: 是否成功
+            tuple: (是否成功, 已處理頁數, 處理結果摘要, 調整記錄列表)
         """
-        logger.info(f"開始批量處理 {頁數} 頁商品...")
-        
         # 導入依賴模組
         from .批量處理 import 批量處理
         
-        if 頁數 < 1:
-            logger.warning("頁數必須大於0，自動設為1")
-            頁數 = 1
-            
         已處理頁數 = 0
         總處理規格數 = 0
         總開關成功數 = 0
         總價格成功數 = 0
+        所有調整記錄 = []  # 收集所有頁面的調整記錄
         
-        # 確保在編輯模式
-        if not self.檢查是否編輯模式():
-            logger.warning("未處於編輯模式，嘗試進入編輯模式")
-            if not self.進入編輯模式():
-                logger.error("無法進入編輯模式，無法處理")
-                return False
-        
-        # 開始處理當前頁和後續頁
         try:
-            for 當前頁 in range(1, 頁數 + 1):
-                logger.info(f"=== 處理第 {當前頁}/{頁數} 頁 ===")
+            # 獲取目前頁數和當前頁面
+            當前頁 = 1
+            
+            # 循環處理多個頁面
+            for 頁數索引 in range(頁數):
+                logger.info(f"處理第 {當前頁}/{頁數} 頁")
                 
-                # 搜尋當前頁的商品
+                # 獲取當前頁的商品數據
                 搜尋結果 = self.搜尋商品()
                 
-                # 診斷搜尋結果
-                if not 搜尋結果:
-                    logger.warning(f"⚠ 第 {當前頁} 頁搜尋結果為空")
+                # 確保搜尋結果有效
+                if not 搜尋結果 or not isinstance(搜尋結果, dict):
+                    logger.warning(f"⚠ 第 {當前頁} 頁搜尋結果無效，可能頁面結構發生變化")
+                    當前頁 += 1
                     continue
-                    
-                if not isinstance(搜尋結果, dict):
-                    logger.warning(f"⚠ 第 {當前頁} 頁搜尋結果格式錯誤: 預期字典類型，實際為 {type(搜尋結果)}")
-                    # 嘗試轉換為正確格式
-                    if isinstance(搜尋結果, list):
-                        logger.info("搜尋結果是列表，嘗試轉換為正確格式")
-                        商品列表 = 搜尋結果
-                        搜尋結果 = {
-                            "product_count": len(商品列表),
-                            "spec_count": sum(len(product.get('specs', [])) for product in 商品列表),
-                            "products": 商品列表
-                        }
-                    else:
-                        logger.error(f"無法處理搜尋結果類型: {type(搜尋結果)}")
-                        continue
                 
-                # 檢查字典是否包含必要的鍵
+                # 確保搜尋結果包含必要的鍵
                 if not all(key in 搜尋結果 for key in ["product_count", "spec_count", "products"]):
                     logger.warning(f"⚠ 第 {當前頁} 頁搜尋結果缺少必要的鍵")
                     missing_keys = [key for key in ["product_count", "spec_count", "products"] if key not in 搜尋結果]
@@ -1140,6 +1117,7 @@ class 商品搜尋:
                     except Exception as diag_error:
                         logger.error(f"頁面診斷時發生錯誤: {str(diag_error)}")
                     
+                    當前頁 += 1
                     continue
                     
                 logger.info(f"第 {當前頁} 頁找到 {len(商品列表)} 個商品")
@@ -1152,8 +1130,16 @@ class 商品搜尋:
                     處理結果 = 批量處理器.批量處理商品規格(商品列表)
                     
                     # 檢查處理結果
-                    if isinstance(處理結果, tuple) and len(處理結果) == 3:
-                        處理數, 開關成功數, 價格成功數 = 處理結果
+                    if isinstance(處理結果, tuple):
+                        # 新格式，預期包含四個值：處理數, 開關成功數, 價格成功數, 調整記錄列表
+                        if len(處理結果) >= 4 and isinstance(處理結果[3], list):
+                            處理數, 開關成功數, 價格成功數, 當頁調整記錄 = 處理結果[:4]
+                            所有調整記錄.extend(當頁調整記錄)
+                            logger.info(f"收集到 {len(當頁調整記錄)} 條調整記錄")
+                        # 舊格式，只包含三個值
+                        elif len(處理結果) >= 3:
+                            處理數, 開關成功數, 價格成功數 = 處理結果[:3]
+                        
                         總處理規格數 += 處理數
                         總開關成功數 += 開關成功數
                         總價格成功數 += 價格成功數
@@ -1175,11 +1161,18 @@ class 商品搜尋:
                                 elif i == 2 and isinstance(val, int):
                                     總價格成功數 += val
                                     logger.info(f"已提取價格成功數: {val}")
+                                elif i == 3 and isinstance(val, list):
+                                    所有調整記錄.extend(val)
+                                    logger.info(f"已提取調整記錄: {len(val)} 條")
                         elif isinstance(處理結果, dict):
                             logger.info("處理結果是字典，嘗試提取數據")
                             總處理規格數 += 處理結果.get("處理數", 0) 
                             總開關成功數 += 處理結果.get("開關成功數", 0)
                             總價格成功數 += 處理結果.get("價格成功數", 0)
+                            調整記錄 = 處理結果.get("調整記錄", [])
+                            if isinstance(調整記錄, list):
+                                所有調整記錄.extend(調整記錄)
+                                logger.info(f"從字典中提取調整記錄: {len(調整記錄)} 條")
                 
                 except Exception as batch_error:
                     logger.error(f"處理第 {當前頁} 頁時發生錯誤: {str(batch_error)}")
@@ -1188,7 +1181,7 @@ class 商品搜尋:
                 已處理頁數 += 1
                 
                 # 如果還有下一頁要處理
-                if 當前頁 < 頁數:
+                if 頁數索引 < 頁數 - 1:
                     logger.info(f"準備前往第 {當前頁 + 1} 頁...")
                     
                     # 前往下一頁
@@ -1204,21 +1197,40 @@ class 商品搜尋:
                         logger.warning(f"前往第 {當前頁 + 1} 頁後未處於編輯模式，嘗試重新進入")
                         if not self.進入編輯模式():
                             logger.error(f"⚠ 無法在第 {當前頁 + 1} 頁進入編輯模式，跳過該頁")
+                            當前頁 += 1
                             continue
+                    
+                    當前頁 += 1
             
             # 處理完成，顯示總結果
             if 已處理頁數 > 0:
                 logger.info(f"多頁處理完成: 共處理 {已處理頁數}/{頁數} 頁，{總處理規格數} 個規格")
                 logger.info(f"成功開關: {總開關成功數} 個，成功調價: {總價格成功數} 個")
+                logger.info(f"收集到 {len(所有調整記錄)} 條調整記錄")
                 
-                return True
+                # 創建處理結果摘要
+                處理結果摘要 = {
+                    "總處理規格數": 總處理規格數,
+                    "總開關成功數": 總開關成功數,
+                    "總價格成功數": 總價格成功數
+                }
+                
+                return True, 已處理頁數, 處理結果摘要, 所有調整記錄
             else:
                 logger.warning("⚠ 未能成功處理任何頁面")
-                return False
+                return False, 0, {"總處理規格數": 0, "總開關成功數": 0, "總價格成功數": 0}, []
         
         except Exception as e:
             logger.error(f"⚠ 多頁批量處理過程中發生錯誤: {str(e)}")
             # 嘗試捕獲錯誤堆疊以便診斷
             import traceback
             logger.error(f"詳細錯誤堆疊:\n{traceback.format_exc()}")
-            return False 
+            
+            # 即使發生錯誤，也返回已處理的結果
+            處理結果摘要 = {
+                "總處理規格數": 總處理規格數,
+                "總開關成功數": 總開關成功數,
+                "總價格成功數": 總價格成功數
+            }
+            
+            return False, 已處理頁數, 處理結果摘要, 所有調整記錄
