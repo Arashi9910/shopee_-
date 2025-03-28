@@ -153,8 +153,8 @@ class 商品搜尋:
                                         console.log(`從折扣標記找到價格: ${price}, 文本="${item.text}"`);
                                         foundDiscountPrice = true;
                                         
-                                        // 高亮該元素，幫助診斷
-                                        item.element.style.border = '3px solid green';
+                                        // 移除高亮元素
+                                        // item.element.style.border = '3px solid green';
                                         break;
                                     }
                                 }
@@ -184,8 +184,8 @@ class 商品搜尋:
                                                 input: input,
                                                 index: i
                                             });
-                                            // 標記找到的NT$輸入框
-                                            input.style.border = '3px solid green';
+                                            // 只標記NT$輸入框，不再標記其他輸入框
+                                            input.style.border = '3px solid blue';
                                         }
                                     }
                                     
@@ -197,7 +197,7 @@ class 商品搜尋:
                                             input: input,
                                             index: i
                                         });
-                                        // 標記找到的NT$輸入框
+                                        // 只標記NT$輸入框，不再標記其他輸入框
                                         input.style.border = '3px solid blue';
                                     }
                                 }
@@ -230,7 +230,8 @@ class 商品搜尋:
                                         if (firstValue > 10 && secondValue < 10) {
                                             price = firstInput.value;
                                             priceType = '第一輸入框特價';
-                                            firstInput.style.border = '3px solid purple';
+                                            // 只標記特價輸入框
+                                            firstInput.style.border = '3px solid blue';
                                             console.log(`從第一輸入框獲取特價: ${price} (第二輸入框可能是折扣率: ${secondValue})`);
                                             foundDiscountPrice = true;
                                         }
@@ -238,7 +239,8 @@ class 商品搜尋:
                                         else if (firstValue < 10 && secondValue > 10) {
                                             price = secondInput.value;
                                             priceType = '第二輸入框特價';
-                                            secondInput.style.border = '3px solid orange';
+                                            // 只標記特價輸入框
+                                            secondInput.style.border = '3px solid blue';
                                             console.log(`從第二輸入框獲取特價: ${price} (第一輸入框可能是折扣率: ${firstValue})`);
                                             foundDiscountPrice = true;
                                         }
@@ -246,7 +248,8 @@ class 商品搜尋:
                                         else if (firstValue > 10) {
                                             price = firstInput.value;
                                             priceType = '預設特價輸入框';
-                                            firstInput.style.border = '3px solid yellow';
+                                            // 只標記特價輸入框
+                                            firstInput.style.border = '3px solid blue';
                                             console.log(`使用第一輸入框值作為特價: ${price}`);
                                             foundDiscountPrice = true;
                                         }
@@ -256,7 +259,8 @@ class 商品搜尋:
                                 else if (priceInputs.length === 1 && priceInputs[0].value && !isNaN(parseFloat(priceInputs[0].value)) && parseFloat(priceInputs[0].value) > 10) {
                                     price = priceInputs[0].value;
                                     priceType = '單一特價輸入框';
-                                    priceInputs[0].style.border = '3px solid cyan';
+                                    // 保持一致的藍色標記
+                                    priceInputs[0].style.border = '3px solid blue';
                                     console.log(`從單一輸入框獲取特價: ${price}`);
                                     foundDiscountPrice = true;
                                 }
@@ -278,7 +282,8 @@ class 商品搜尋:
                                             price = ntMatch[1];
                                             priceType = '單一價格文本';
                                             console.log(`從單一價格文本找到價格: ${price}, 文本="${item.text}"`);
-                                            item.element.style.border = '3px solid purple';
+                                            // 移除高亮元素
+                                            // item.element.style.border = '3px solid purple';
                                             foundDiscountPrice = true;
                                             break;
                                         } else if (allPrices && allPrices.length > 1) {
@@ -287,7 +292,8 @@ class 商品搜尋:
                                             price = lastPrice;
                                             priceType = '多價格文本';
                                             console.log(`從多價格文本找到價格: ${price}, 文本="${item.text}"`);
-                                            item.element.style.border = '3px solid yellow';
+                                            // 移除高亮元素
+                                            // item.element.style.border = '3px solid yellow';
                                             foundDiscountPrice = true;
                                             break;
                                         }
@@ -337,7 +343,8 @@ class 商品搜尋:
                                         price = ntMatch[1];
                                         priceType = '通用價格文本';
                                         console.log(`從通用文本找到價格: ${price}, 文本="${item.text}"`);
-                                        item.element.style.border = '3px solid cyan';
+                                        // 移除高亮元素
+                                        // item.element.style.border = '3px solid cyan';
                                         foundDiscountPrice = true;
                                         break;
                                     }
