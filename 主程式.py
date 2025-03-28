@@ -36,6 +36,11 @@ class 調價主程式:
         self.driver = None
         self.browser_controller = None
         self.root = root
+        self.products = []  # 初始化products为空列表，避免后续访问未定义属性
+        
+        # 設置程式退出時的清理操作
+        import atexit
+        atexit.register(self._cleanup)
         
         if root:
             # 使用介面控制器創建GUI
@@ -43,6 +48,16 @@ class 調價主程式:
             self.setup_gui()
         else:
             self.interface = None
+    
+    def _cleanup(self):
+        """清理資源，確保瀏覽器正確關閉"""
+        try:
+            if hasattr(self, 'browser_controller') and self.browser_controller and self.driver:
+                logger.info("程式退出，關閉瀏覽器...")
+                self.browser_controller.close_browser()
+        except Exception as e:
+            logger.error(f"關閉瀏覽器時發生錯誤: {str(e)}")
+            # 在這裡無法顯示UI錯誤，只能記錄日誌
     
     def setup_gui(self):
         """設置GUI界面"""
@@ -120,8 +135,15 @@ class 調價主程式:
             self.interface.log_message("正在啟動Chrome瀏覽器...")
             self.browser_controller = 瀏覽器控制()
             
+            # 获取用户输入的URL
+            url = self.interface.get_url()
+            
             # 啟動瀏覽器
-            self.driver = self.browser_controller.launch_browser()
+            if url:
+                self.interface.log_message(f"使用網址: {url}")
+                self.driver = self.browser_controller.launch_browser(url=url)
+            else:
+                self.driver = self.browser_controller.launch_browser()
             
             if self.driver:
                 self.interface.log_message("✓ Chrome瀏覽器啟動成功")
@@ -145,6 +167,16 @@ class 調價主程式:
             
             if self.driver:
                 self.interface.log_message("✓ 成功連接到現有的Chrome瀏覽器")
+                
+                # 获取用户输入的URL
+                url = self.interface.get_url()
+                
+                # 如果有URL，则导航到该URL
+                if url:
+                    self.interface.log_message(f"導航到網址: {url}")
+                    self.browser_controller.導航到網址(url)
+                    self.interface.log_message(f"✓ 已導航到: {url}")
+                
                 self.interface.show_info_dialog("成功", "成功連接到現有的Chrome瀏覽器")
             else:
                 self.interface.log_message("✗ 連接Chrome瀏覽器失敗")
@@ -161,6 +193,19 @@ class 調價主程式:
                 self.interface.log_message("✗ 請先啟動或連接Chrome瀏覽器")
                 self.interface.show_warning_dialog("警告", "請先啟動或連接Chrome瀏覽器")
                 return
+            
+            # 檢查當前URL，如果有URL輸入則進行導航
+            url = self.interface.get_url()
+            if url:
+                current_url = self.driver.current_url
+                if url not in current_url:
+                    self.interface.log_message(f"導航到網址: {url}")
+                    success = self.browser_controller.導航到網址(url)
+                    if not success:
+                        self.interface.log_message(f"⚠ 導航失敗，請檢查網址是否正確: {url}")
+                        self.interface.show_warning_dialog("警告", "導航失敗，請檢查網址是否正確")
+                        return
+                    self.interface.log_message("✓ 成功導航到頁面")
                 
             # 進入折扣活動編輯頁面
             self.interface.log_message("開始編輯折扣活動流程...")
@@ -181,23 +226,34 @@ class 調價主程式:
             
             # 搜尋商品
             self.interface.log_message("正在搜尋商品...")
-            products = product_handler.搜尋.搜尋商品()
+            search_result = product_handler.搜尋.搜尋商品()
             
-            if not products:
+            # 确保search_result包含有效数据
+            if not search_result or not isinstance(search_result, dict):
+                self.interface.log_message("⚠ 搜尋結果格式錯誤")
+                self.interface.show_warning_dialog("警告", "搜尋結果格式錯誤，請重試")
+                return
+                
+            # 提取商品列表
+            products = search_result.get("products", [])
+            product_count = search_result.get("product_count", 0)
+            spec_count = search_result.get("spec_count", 0)
+            
+            if not products or product_count == 0:
                 self.interface.log_message("⚠ 未找到任何商品")
                 self.interface.show_warning_dialog("警告", "未找到任何商品，請確認頁面內容")
                 return
             
             # 保存商品列表以備后用
             self.products = products
-            self.interface.log_message(f"✓ 找到 {len(products)} 個商品")
+            self.interface.log_message(f"✓ 找到 {product_count} 個商品，共 {spec_count} 個規格")
             
             # 顯示商品規格信息
             info_text = product_handler.規格分析.格式化商品資訊(products)
             self.interface.log_message("顯示商品規格信息:")
             self.interface.log_message(info_text)
             
-            self.interface.show_info_dialog("成功", f"成功獲取到 {len(products)} 個商品信息\n請點擊「批量處理商品規格」按鈕繼續")
+            self.interface.show_info_dialog("成功", f"成功獲取到 {product_count} 個商品信息\n請點擊「批量處理商品規格」按鈕繼續")
             
         except Exception as e:
             logger.error(f"編輯折扣活動時發生錯誤: {str(e)}")
@@ -225,15 +281,25 @@ class 調價主程式:
             product_handler = 商品處理集成(self.driver)
             
             # 批量處理商品規格
-            總處理數, 開關成功數, 價格成功數 = product_handler.批量處理.批量處理商品規格(self.products)
+            結果 = product_handler.批量處理.批量處理商品規格(self.products)
+            
+            # 確保結果包含三個值
+            if isinstance(結果, tuple) and len(結果) == 3:
+                總處理數, 開關成功數, 價格成功數 = 結果
+            else:
+                # 如果返回结果不是预期的三元组，记录错误并使用默认值
+                self.interface.log_message("⚠ 批量處理返回的結果格式不正確")
+                logger.warning(f"批量處理返回的結果格式不正確: {結果}")
+                總處理數 = 0
+                開關成功數 = 0
+                價格成功數 = 0
             
             # 顯示處理結果
             self.interface.log_message(f"批量處理完成: 總共 {總處理數} 個規格，開啟 {開關成功數} 個，調整價格 {價格成功數} 個")
             
             # 更新UI
             if 總處理數 > 0:
-                成功率 = (開關成功數 + 價格成功數) / 總處理數 * 100
-                結果訊息 = f"批量處理完成!\n\n總共 {總處理數} 個規格\n開啟 {開關成功數} 個\n調整價格 {價格成功數} 個\n\n成功率: {成功率:.1f}%"
+                結果訊息 = f"批量處理完成!\n\n總共 {總處理數} 個規格\n開啟 {開關成功數} 個\n調整價格 {價格成功數} 個"
                 self.interface.log_message(結果訊息.replace('\n', ' '))
                 self.interface.show_info_dialog("處理結果", 結果訊息)
             else:
@@ -254,6 +320,18 @@ class 調價主程式:
                 self.interface.show_warning_dialog("警告", "請先啟動或連接Chrome瀏覽器")
                 return
             
+            # 如果有網址輸入，則先導航
+            url = self.interface.get_url()
+            if url:
+                current_url = self.driver.current_url
+                if url not in current_url:
+                    self.interface.log_message(f"導航到網址: {url}")
+                    success = self.browser_controller.導航到網址(url)
+                    if not success:
+                        self.interface.log_message(f"⚠ 導航失敗，請檢查網址是否正確: {url}")
+                        self.interface.show_warning_dialog("警告", "導航失敗，請檢查網址是否正確")
+                        return
+            
             # 獲取用戶輸入的頁數
             try:
                 頁數 = int(self.頁數輸入.get())
@@ -269,16 +347,31 @@ class 調價主程式:
             # 初始化商品處理模組
             product_handler = 商品處理集成(self.driver)
             
-            # 執行多頁批量處理
-            success = product_handler.搜尋.批量處理多頁商品(頁數)
+            # 確保在編輯模式
+            if not product_handler.搜尋.檢查是否編輯模式():
+                self.interface.log_message("嘗試進入編輯模式...")
+                success = product_handler.進入編輯模式()
+                if not success:
+                    self.interface.log_message("⚠ 無法進入編輯模式，可能需要手動操作")
+                    self.interface.show_warning_dialog("警告", "無法進入編輯模式，請手動點擊編輯按鈕後再試")
+                    return
+                self.interface.log_message("✓ 已成功進入編輯模式")
             
-            # 顯示處理結果
-            if success:
-                self.interface.log_message(f"✓ 多頁批量處理完成，共處理了 {頁數} 頁商品")
-                self.interface.show_info_dialog("處理結果", f"多頁批量處理完成!\n\n成功處理了 {頁數} 頁商品")
-            else:
-                self.interface.log_message("⚠ 多頁批量處理過程中發生錯誤，請查看日誌了解詳情")
-                self.interface.show_warning_dialog("處理結果", "多頁批量處理過程中發生錯誤，請查看日誌了解詳情")
+            # 執行多頁批量處理
+            try:
+                success = product_handler.搜尋.批量處理多頁商品(頁數)
+                
+                # 顯示處理結果
+                if success:
+                    self.interface.log_message(f"✓ 多頁批量處理完成，共處理了 {頁數} 頁商品")
+                    self.interface.show_info_dialog("處理結果", f"多頁批量處理完成!\n\n成功處理了 {頁數} 頁商品")
+                else:
+                    self.interface.log_message("⚠ 多頁批量處理過程中發生錯誤，請查看日誌了解詳情")
+                    self.interface.show_warning_dialog("處理結果", "多頁批量處理過程中發生錯誤，請查看日誌了解詳情")
+            except Exception as e:
+                logger.error(f"批量處理多頁商品時發生錯誤: {str(e)}")
+                self.interface.log_message(f"✗ 多頁處理錯誤: {str(e)}")
+                self.interface.show_error_dialog("錯誤", f"批量處理多頁商品時發生錯誤: {str(e)}")
             
         except Exception as e:
             logger.error(f"多頁批量處理時發生錯誤: {str(e)}")

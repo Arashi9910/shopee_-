@@ -33,7 +33,7 @@ class 商品搜尋:
         """搜尋頁面上的商品和規格
 
         Returns:
-            list: 商品列表
+            dict: 包含商品列表的字典，格式為 {"product_count": int, "spec_count": int, "products": list}
         """
         logger.info("開始尋找頁面上的商品...")
         
@@ -49,398 +49,299 @@ class 商品搜尋:
         except:
             logger.warning("等待商品元素超時，嘗試繼續執行...")
         
-        # 使用JavaScript獲取商品
+        # 使用JavaScript抓取頁面上的商品信息
         products_js = """
-        function extractProducts() {
-            // 尋找商品卡片
-            const productCards = document.querySelectorAll('div.discount-item-component, div.discount-edit-item');
-            
-            if (!productCards || productCards.length === 0) {
-                console.log("無法找到商品卡片");
-                return [];
-            }
-            
-            // 尋找離輸入框最近的標籤
-            function findNearestLabel(element) {
-                // 1. 檢查前面的兄弟元素
-                let sibling = element.previousElementSibling;
-                while (sibling) {
-                    if (sibling.textContent.trim()) {
-                        return sibling.textContent.trim();
-                    }
-                    sibling = sibling.previousElementSibling;
-                }
+        // 尋找所有商品卡片
+        const productCards = document.querySelectorAll('div.discount-item-component, div.discount-edit-item');
+        console.log('找到商品卡片數量:', productCards.length);
+        
+        // 初始化結果陣列
+        const products = [];
+        
+        for (const card of productCards) {
+            try {
+                // 獲取商品名稱
+                const nameElem = card.querySelector('div.ellipsis-content.single');
+                if (!nameElem) continue;
                 
-                // 2. 檢查父元素是否有標籤或本身是標籤
-                let parent = element.parentElement;
-                if (parent) {
-                    // 檢查父元素是否有label類或是label標籤
-                    if (parent.classList.contains('label') || parent.tagName.toLowerCase() === 'label') {
-                        return parent.textContent.trim();
-                    }
-                    
-                    // 3. 檢查父元素的前面的兄弟元素
-                    sibling = parent.previousElementSibling;
-                    while (sibling) {
-                        if (sibling.textContent.trim()) {
-                            return sibling.textContent.trim();
-                        }
-                        sibling = sibling.previousElementSibling;
-                    }
-                    
-                    // 4. 檢查父元素內的標籤
-                    const labels = parent.querySelectorAll('label, .label, [class*="label"]');
-                    for (const label of labels) {
-                        if (label !== element && label.textContent.trim()) {
-                            return label.textContent.trim();
-                        }
-                    }
-                }
+                const productName = nameElem.textContent.trim();
+                console.log('找到商品:', productName);
                 
-                return null;
-            }
-            
-            const products = [];
-            
-            for (const card of productCards) {
-                try {
-                    // 獲取商品名稱
-                    const nameElem = card.querySelector('div.ellipsis-content.single');
-                    const productName = nameElem ? nameElem.innerText.trim() : '未知商品';
-                    
-                    // 獲取商品規格
-                    const specs = [];
-                    const specElements = card.querySelectorAll('div.discount-view-item-model-component, div.discount-edit-item-model-component');
-                    
-                    for (const specElem of specElements) {
-                        try {
-                            const specNameElem = specElem.querySelector('div.ellipsis-content.single');
-                            const specName = specNameElem ? specNameElem.innerText.trim() : '未知規格';
-                            
-                            // 獲取庫存
-                            const stockElem = specElem.querySelector('div.item-content.item-stock');
-                            const stock = stockElem ? stockElem.innerText.trim() : '0';
-                            
-                            // 重新實現價格獲取邏輯，專注於蝦皮折扣價
-                            let price = '0';
-                            let priceType = '未知';
-                            let discountRate = '';  // 記錄折扣率
-                            let originalPrice = ''; // 記錄原價
-                            let foundDiscountPrice = false;
-                            
-                            // 1. 最優先: 查找含有明確顯示NT$折扣價的元素
-                            const allVisibleText = [];
-                            specElem.querySelectorAll('*').forEach(el => {
-                                if (el.offsetParent !== null && el.textContent && el.textContent.includes('NT$')) {
-                                    allVisibleText.push({
-                                        element: el,
-                                        text: el.textContent.trim()
-                                    });
-                                }
-                            });
-                            
-                            // 優先處理包含最新折扣價的文本
-                            for (const item of allVisibleText) {
-                                // 優先查找包含折扣或特價標記的元素
-                                if (item.text.includes('折扣') || item.text.includes('特價') || 
-                                    item.text.includes('優惠') || item.text.includes('NT$') && 
-                                   (item.element.classList.contains('discount') || 
-                                    item.element.className.includes('discount'))) {
-                                    
-                                    const ntMatch = item.text.match(/NT\$\s*(\d+)/);
-                                    if (ntMatch) {
-                                        price = ntMatch[1];
-                                        priceType = '折扣價標記';
-                                        console.log(`從折扣標記找到價格: ${price}, 文本="${item.text}"`);
-                                        foundDiscountPrice = true;
-                                        
-                                        // 移除高亮元素標記
-                                        break;
-                                    }
+                // 獲取該商品的所有規格
+                const specElements = card.querySelectorAll('div.discount-view-item-model-component, div.discount-edit-item-model-component');
+                console.log(`商品 "${productName}" 的規格數量:`, specElements.length);
+                
+                const specs = [];
+                
+                for (const specElem of specElements) {
+                    try {
+                        // 獲取規格名稱
+                        const specNameElem = specElem.querySelector('div.ellipsis-content.single');
+                        if (!specNameElem) continue;
+                        
+                        const specName = specNameElem.textContent.trim();
+                        console.log('找到規格:', specName);
+                        
+                        // 獲取庫存
+                        const stockElem = specElem.querySelector('div.item-content.item-stock');
+                        const stock = stockElem ? stockElem.textContent.trim() : '0';
+                        
+                        // 重新實現價格獲取邏輯，專注於蝦皮折扣價
+                        let price = '0';
+                        let priceType = '未知';
+                        let discountRate = '';  // 記錄折扣率
+                        let originalPrice = ''; // 記錄原價
+                        let foundDiscountPrice = false;
+                        
+                        // 1. 最優先: 查找含有明確顯示NT$折扣價的元素
+                        const allVisibleText = [];
+                        specElem.querySelectorAll('*').forEach(el => {
+                            if (el.offsetParent !== null && el.textContent && el.textContent.includes('NT$')) {
+                                allVisibleText.push({
+                                    element: el,
+                                    text: el.textContent.trim()
+                                });
+                            }
+                        });
+                        
+                        // 優先處理包含折扣價的文本
+                        for (const item of allVisibleText) {
+                            // 優先查找包含折扣或特價標記的元素
+                            if (item.text.includes('折扣') || item.text.includes('特價') || 
+                                item.text.includes('優惠') || item.text.includes('NT$') && 
+                               (item.element.classList.contains('discount') || 
+                                item.element.className.includes('discount'))) {
+                                
+                                const ntMatch = item.text.match(/NT\$\s*(\d+)/);
+                                if (ntMatch) {
+                                    price = ntMatch[1];
+                                    priceType = '折扣價標記';
+                                    console.log(`從折扣標記找到價格: ${price}, 文本="${item.text}"`);
+                                    foundDiscountPrice = true;
+                                    break;
                                 }
                             }
+                        }
+                        
+                        // 2. 檢查蝦皮特有的價格輸入框
+                        if (!foundDiscountPrice) {
+                            // 找到所有輸入框，特別是帶有NT$標記的價格輸入框
+                            const priceInputs = specElem.querySelectorAll('input.eds-input__input[data-v-7fcfdf7e], input[class*="discount"], input[class*="price"]');
+                            console.log(`找到 ${priceInputs.length} 個價格相關輸入框`);
                             
-                            // 2. 檢查蝦皮特有的價格輸入框
-                            if (!foundDiscountPrice) {
-                                // 找到所有輸入框，特別是帶有NT$標記的價格輸入框
-                                const priceInputs = specElem.querySelectorAll('input.eds-input__input[data-v-7fcfdf7e], input[class*="discount"], input[class*="price"]');
-                                console.log(`找到 ${priceInputs.length} 個價格相關輸入框`);
+                            // 查找前綴為NT$的輸入框（通常是折扣價格框）
+                            const ntPrefixedInputs = [];
+                            
+                            for (let i = 0; i < priceInputs.length; i++) {
+                                const input = priceInputs[i];
+                                console.log(`輸入框 ${i+1}: value="${input.value}", placeholder="${input.placeholder}"`);
                                 
-                                // 查找前綴為NT$的輸入框（通常是折扣價格框）
-                                const ntPrefixedInputs = [];
-                                
-                                // 標記所有輸入框，以便調試
-                                for (let i = 0; i < priceInputs.length; i++) {
-                                    const input = priceInputs[i];
-                                    console.log(`輸入框 ${i+1}: value="${input.value}", placeholder="${input.placeholder}"`);
-                                    
-                                    // 查找NT$前綴元素
-                                    const parentElement = input.parentElement;
-                                    if (parentElement) {
-                                        const prefixElement = parentElement.querySelector('span, div, label');
-                                        if (prefixElement && prefixElement.textContent.trim() === 'NT$') {
-                                            console.log(`找到前綴為NT$的輸入框 ${i+1}, 值=${input.value}`);
-                                            ntPrefixedInputs.push({
-                                                input: input,
-                                                index: i
-                                            });
-                                            // 不再標記NT$輸入框
-                                        }
-                                    }
-                                    
-                                    // 查看輸入框之前的元素是否包含NT$
-                                    const prevSibling = input.previousElementSibling;
-                                    if (prevSibling && prevSibling.textContent.includes('NT$')) {
-                                        console.log(`找到前面元素包含NT$的輸入框 ${i+1}, 值=${input.value}`);
+                                // 查找NT$前綴元素
+                                const parentElement = input.parentElement;
+                                if (parentElement) {
+                                    const prefixElement = parentElement.querySelector('span, div, label');
+                                    if (prefixElement && prefixElement.textContent.trim() === 'NT$') {
+                                        console.log(`找到前綴為NT$的輸入框 ${i+1}, 值=${input.value}`);
                                         ntPrefixedInputs.push({
                                             input: input,
                                             index: i
                                         });
-                                        // 不再標記NT$輸入框
                                     }
                                 }
                                 
-                                // 優先使用NT$前綴的輸入框值（特價輸入框）
-                                if (ntPrefixedInputs.length > 0) {
-                                    // 按照索引排序，通常第一個NT$輸入框是特價
-                                    ntPrefixedInputs.sort((a, b) => a.index - b.index);
-                                    const firstNtInput = ntPrefixedInputs[0].input;
-                                    
-                                    if (firstNtInput.value && !isNaN(parseFloat(firstNtInput.value))) {
-                                        price = firstNtInput.value;
-                                        priceType = 'NT$特價輸入框';
-                                        console.log(`從NT$特價輸入框獲取價格: ${price}`);
-                                        foundDiscountPrice = true;
-                                    }
+                                // 查看輸入框之前的元素是否包含NT$
+                                const prevSibling = input.previousElementSibling;
+                                if (prevSibling && prevSibling.textContent.includes('NT$')) {
+                                    console.log(`找到前面元素包含NT$的輸入框 ${i+1}, 值=${input.value}`);
+                                    ntPrefixedInputs.push({
+                                        input: input,
+                                        index: i
+                                    });
                                 }
-                                // 如果沒有找到NT$前綴的輸入框，嘗試使用位置判斷
-                                else if (priceInputs.length >= 2) {
-                                    // 在蝦皮的折扣編輯頁面，通常第一個輸入框是特價，第二個是折扣率
-                                    const firstInput = priceInputs[0];
-                                    const secondInput = priceInputs[1];
-                                    
-                                    // 檢查哪個輸入框的值更可能是特價（通常特價大於10，折扣率小於10）
-                                    if (firstInput.value && !isNaN(parseFloat(firstInput.value))) {
-                                        const firstValue = parseFloat(firstInput.value);
-                                        const secondValue = secondInput.value && !isNaN(parseFloat(secondInput.value)) ? parseFloat(secondInput.value) : 0;
-                                        
-                                        // 如果第一個值大於10且第二個值小於10，則第一個很可能是特價
-                                        if (firstValue > 10 && secondValue < 10) {
-                                            price = firstInput.value;
-                                            priceType = '第一輸入框特價';
-                                            // 不再標記特價輸入框
-                                            console.log(`從第一輸入框獲取特價: ${price} (第二輸入框可能是折扣率: ${secondValue})`);
-                                            foundDiscountPrice = true;
-                                        }
-                                        // 如果第一個值小於10且第二個值大於10，則第二個可能是特價
-                                        else if (firstValue < 10 && secondValue > 10) {
-                                            price = secondInput.value;
-                                            priceType = '第二輸入框特價';
-                                            // 不再標記特價輸入框
-                                            console.log(`從第二輸入框獲取特價: ${price} (第一輸入框可能是折扣率: ${firstValue})`);
-                                            foundDiscountPrice = true;
-                                        }
-                                        // 如果兩個值都大於10，優先使用第一個值
-                                        else if (firstValue > 10) {
-                                            price = firstInput.value;
-                                            priceType = '預設特價輸入框';
-                                            // 不再標記特價輸入框
-                                            console.log(`使用第一輸入框值作為特價: ${price}`);
-                                            foundDiscountPrice = true;
-                                        }
-                                    }
-                                }
-                                // 如果只有一個輸入框，且值大於10，可能是特價
-                                else if (priceInputs.length === 1 && priceInputs[0].value && !isNaN(parseFloat(priceInputs[0].value)) && parseFloat(priceInputs[0].value) > 10) {
-                                    price = priceInputs[0].value;
-                                    priceType = '單一特價輸入框';
-                                    // 不再標記特價輸入框
-                                    console.log(`從單一輸入框獲取特價: ${price}`);
+                            }
+                            
+                            // 優先使用NT$前綴的輸入框值（特價輸入框）
+                            if (ntPrefixedInputs.length > 0) {
+                                // 按照索引排序，通常第一個NT$輸入框是特價
+                                ntPrefixedInputs.sort((a, b) => a.index - b.index);
+                                const firstNtInput = ntPrefixedInputs[0].input;
+                                
+                                if (firstNtInput.value && !isNaN(parseFloat(firstNtInput.value))) {
+                                    price = firstNtInput.value;
+                                    priceType = 'NT$特價輸入框';
+                                    console.log(`從NT$特價輸入框獲取價格: ${price}`);
                                     foundDiscountPrice = true;
                                 }
                             }
-                            
-                            // 3. 查找所有可能的折扣價格文本
-                            if (!foundDiscountPrice) {
-                                // 對所有包含NT$的文本按長度排序（較短的可能是單一價格，優先選擇）
-                                allVisibleText.sort((a, b) => a.text.length - b.text.length);
+                            // 如果沒有找到NT$前綴的輸入框，嘗試使用位置判斷
+                            else if (priceInputs.length >= 2) {
+                                // 在蝦皮的折扣編輯頁面，通常第一個輸入框是特價，第二個是折扣率
+                                const firstInput = priceInputs[0];
+                                const secondInput = priceInputs[1];
                                 
-                                for (const item of allVisibleText) {
-                                    const ntMatch = item.text.match(/NT\$\s*(\d+)/);
-                                    if (ntMatch) {
-                                        // 檢查是單一價格還是多個價格
-                                        const allPrices = item.text.match(/NT\$\s*\d+/g);
-                                        
-                                        if (allPrices && allPrices.length === 1) {
-                                            // 單一價格，很可能是折扣價
-                                            price = ntMatch[1];
-                                            priceType = '單一價格文本';
-                                            console.log(`從單一價格文本找到價格: ${price}, 文本="${item.text}"`);
-                                            // 不再標記元素
-                                            foundDiscountPrice = true;
-                                            break;
-                                        } else if (allPrices && allPrices.length > 1) {
-                                            // 多個價格，最後一個通常是折扣價
-                                            const lastPrice = allPrices[allPrices.length-1].match(/\d+/)[0];
-                                            price = lastPrice;
-                                            priceType = '多價格文本';
-                                            console.log(`從多價格文本找到價格: ${price}, 文本="${item.text}"`);
-                                            // 不再標記元素
-                                            foundDiscountPrice = true;
-                                            break;
-                                        }
+                                // 檢查哪個輸入框的值更可能是特價（通常特價大於10，折扣率小於10）
+                                if (firstInput.value && !isNaN(parseFloat(firstInput.value))) {
+                                    const firstValue = parseFloat(firstInput.value);
+                                    const secondValue = secondInput.value && !isNaN(parseFloat(secondInput.value)) ? parseFloat(secondInput.value) : 0;
+                                    
+                                    // 如果第一個值大於10且第二個值小於10，則第一個很可能是特價
+                                    if (firstValue > 10 && secondValue < 10) {
+                                        price = firstInput.value;
+                                        priceType = '第一輸入框特價';
+                                        console.log(`從第一輸入框獲取特價: ${price} (第二輸入框可能是折扣率: ${secondValue})`);
+                                        foundDiscountPrice = true;
+                                    }
+                                    // 如果第一個值小於10且第二個值大於10，則第二個可能是特價
+                                    else if (firstValue < 10 && secondValue > 10) {
+                                        price = secondInput.value;
+                                        priceType = '第二輸入框特價';
+                                        console.log(`從第二輸入框獲取特價: ${price} (第一輸入框可能是折扣率: ${firstValue})`);
+                                        foundDiscountPrice = true;
+                                    }
+                                    // 如果兩個值都大於10，優先使用第一個值
+                                    else if (firstValue > 10) {
+                                        price = firstInput.value;
+                                        priceType = '預設特價輸入框';
+                                        console.log(`使用第一輸入框值作為特價: ${price}`);
+                                        foundDiscountPrice = true;
                                     }
                                 }
                             }
-                            
-                            // 4. 尋找帶有折扣率的文本，計算折扣價
-                            if (!foundDiscountPrice) {
-                                // 尋找折扣率
-                                for (const item of allVisibleText) {
-                                    const rateMatch = item.text.match(/([0-9.]+)\s*折/);
-                                    if (rateMatch) {
-                                        discountRate = rateMatch[1];
-                                        console.log(`找到折扣率: ${discountRate}, 文本="${item.text}"`);
-                                        
-                                        // 尋找原價
-                                        for (const priceItem of allVisibleText) {
-                                            if (priceItem.text.includes('原價') || priceItem.text.includes('定價')) {
-                                                const origMatch = priceItem.text.match(/NT\$\s*(\d+)/);
-                                                if (origMatch) {
-                                                    originalPrice = origMatch[1];
-                                                    console.log(`找到原價: ${originalPrice}, 文本="${priceItem.text}"`);
-                                                    
-                                                    // 計算折扣價
-                                                    if (originalPrice && discountRate) {
-                                                        price = Math.round(parseFloat(originalPrice) * parseFloat(discountRate) / 10).toString();
-                                                        priceType = '折扣率計算價';
-                                                        console.log(`計算得到折扣價: ${price} = ${originalPrice} × ${discountRate}/10`);
-                                                        foundDiscountPrice = true;
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        
-                                        if (foundDiscountPrice) break;
-                                    }
-                                }
+                            // 如果只有一個輸入框，且值大於10，可能是特價
+                            else if (priceInputs.length === 1 && priceInputs[0].value && !isNaN(parseFloat(priceInputs[0].value)) && parseFloat(priceInputs[0].value) > 10) {
+                                price = priceInputs[0].value;
+                                priceType = '單一特價輸入框';
+                                console.log(`從單一輸入框獲取特價: ${price}`);
+                                foundDiscountPrice = true;
                             }
+                        }
+                        
+                        // 3. 查找所有可能的折扣價格文本
+                        if (!foundDiscountPrice) {
+                            // 對所有包含NT$的文本按長度排序（較短的可能是單一價格，優先選擇）
+                            allVisibleText.sort((a, b) => a.text.length - b.text.length);
                             
-                            // 5. 最後手段：嘗試從任何包含NT$的文本中提取價格
-                            if (!foundDiscountPrice && allVisibleText.length > 0) {
-                                for (const item of allVisibleText) {
-                                    const ntMatch = item.text.match(/NT\$\s*(\d+)/);
-                                    if (ntMatch) {
+                            for (const item of allVisibleText) {
+                                const ntMatch = item.text.match(/NT\$\s*(\d+)/);
+                                if (ntMatch) {
+                                    // 檢查是單一價格還是多個價格
+                                    const allPrices = item.text.match(/NT\$\s*\d+/g);
+                                    
+                                    if (allPrices && allPrices.length === 1) {
+                                        // 單一價格，很可能是折扣價
                                         price = ntMatch[1];
-                                        priceType = '通用價格文本';
-                                        console.log(`從通用文本找到價格: ${price}, 文本="${item.text}"`);
-                                        // 不再標記元素
+                                        priceType = '單一價格文本';
+                                        console.log(`從單一價格文本找到價格: ${price}, 文本="${item.text}"`);
+                                        foundDiscountPrice = true;
+                                        break;
+                                    } else if (allPrices && allPrices.length > 1) {
+                                        // 多個價格，最後一個通常是折扣價
+                                        const lastPrice = allPrices[allPrices.length-1].match(/\d+/)[0];
+                                        price = lastPrice;
+                                        priceType = '多價格文本';
+                                        console.log(`從多價格文本找到價格: ${price}, 文本="${item.text}"`);
                                         foundDiscountPrice = true;
                                         break;
                                     }
                                 }
                             }
-                            
-                            // 最後檢查，確保我們不返回折扣率作為價格
-                            if (parseFloat(price) < 10 && priceType !== '折扣率轉換實際金額' && priceType !== '折扣率與原價文本計算' && priceType !== '折扣率與映射原價計算') {
-                                console.log(`警告: 檢測到價格可能是折扣率 (${price})，嘗試計算實際價格`);
-                                
-                                // 尋找原價文本
-                                const allVisibleTextElements = specElem.querySelectorAll('*');
-                                let foundOriginalPriceForFallback = false;
-                                
-                                for (const elem of allVisibleTextElements) {
-                                    if (elem.textContent && elem.textContent.includes('NT$') && elem.offsetParent !== null) {
-                                        const match = elem.textContent.match(/NT\$\s*(\d+)/);
-                                        if (match && parseInt(match[1]) > 100) {  // 原價通常大於100
-                                            const origPriceValue = match[1];
-                                            const calculatedPrice = Math.round(parseFloat(origPriceValue) * parseFloat(price) / 10);
-                                            console.log(`最後嘗試計算: ${origPriceValue} × ${price}/10 = ${calculatedPrice}`);
-                                            
-                                            // 只有當計算結果合理時才使用
-                                            if (calculatedPrice >= 100) {
-                                                price = calculatedPrice.toString();
-                                                priceType = '最終計算折扣價';
-                                                console.log(`最終確定折扣價: ${price}`);
-                                                foundOriginalPriceForFallback = true;
-                                                break;
+                        }
+                        
+                        // 4. 尋找帶有折扣率的文本，計算折扣價
+                        if (!foundDiscountPrice) {
+                            // 尋找折扣率
+                            for (const item of allVisibleText) {
+                                const rateMatch = item.text.match(/([0-9.]+)\s*折/);
+                                if (rateMatch) {
+                                    discountRate = rateMatch[1];
+                                    console.log(`找到折扣率: ${discountRate}, 文本="${item.text}"`);
+                                    
+                                    // 尋找原價
+                                    for (const priceItem of allVisibleText) {
+                                        if (priceItem.text.includes('原價') || priceItem.text.includes('定價')) {
+                                            const origMatch = priceItem.text.match(/NT\$\s*(\d+)/);
+                                            if (origMatch) {
+                                                originalPrice = origMatch[1];
+                                                console.log(`找到原價: ${originalPrice}, 文本="${priceItem.text}"`);
+                                                
+                                                // 計算折扣價
+                                                if (originalPrice && discountRate) {
+                                                    price = Math.round(parseFloat(originalPrice) * parseFloat(discountRate) / 10).toString();
+                                                    priceType = '折扣率計算價';
+                                                    console.log(`計算得到折扣價: ${price} = ${originalPrice} × ${discountRate}/10`);
+                                                    foundDiscountPrice = true;
+                                                    break;
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                
-                                // 如果仍然找不到原價，查找商品名並使用硬編碼價格
-                                if (!foundOriginalPriceForFallback) {
-                                    console.log(`無法從頁面元素中找到原價，使用根據商品名稱的硬編碼價格`);
                                     
-                                    // 通用商品類型與價格映射
-                                    const productTypeMap = {
-                                        '背心': 499,
-                                        'Bra': 499, 
-                                        '牛仔褲': 698,
-                                        '內搭': 480,
-                                        '針織': 690,
-                                        'bra top': 300,
-                                        '牛仔外套': 956,
-                                        '襯衫': 350,
-                                        '細肩帶': 398
-                                    };
-                                    
-                                    let matchedBasePrice = null;
-                                    for (const type in productTypeMap) {
-                                        if (productName.includes(type)) {
-                                            matchedBasePrice = productTypeMap[type];
-                                            break;
-                                        }
-                                    }
-                                    
-                                    if (matchedBasePrice) {
-                                        const calculatedPrice = Math.round(matchedBasePrice * parseFloat(price) / 10);
-                                        price = calculatedPrice.toString();
-                                        priceType = '商品類型計算價';
-                                        console.log(`根據商品類型計算折扣價: ${matchedBasePrice} × ${price}/10 = ${calculatedPrice}`);
-                                    }
+                                    if (foundDiscountPrice) break;
                                 }
                             }
-                            
-                            // 確保記錄了一些診斷信息
-                            console.log(`商品: ${productName}, 規格: ${specName}, 最終價格: ${price}, 類型: ${priceType}`);
-                            
-                            // 檢查開關狀態
-                            const switchElem = specElem.querySelector('div.eds-switch');
-                            const isOpen = switchElem ? switchElem.classList.contains('eds-switch--open') : false;
-                            const isDisabled = switchElem ? switchElem.classList.contains('eds-switch--disabled') : true;
-                            
-                            specs.push({
-                                name: specName,
-                                stock: stock,
-                                price: price,
-                                priceType: priceType,
-                                originalPrice: originalPrice,
-                                discountRate: discountRate,
-                                status: isOpen ? '開啟' : '關閉',
-                                disabled: isDisabled,
-                                switch: switchElem ? true : false
-                            });
-                        } catch (error) {
-                            console.error('處理規格時出錯:', error);
                         }
+                        
+                        // 5. 最後手段：嘗試從任何包含NT$的文本中提取價格
+                        if (!foundDiscountPrice && allVisibleText.length > 0) {
+                            for (const item of allVisibleText) {
+                                const ntMatch = item.text.match(/NT\$\s*(\d+)/);
+                                if (ntMatch) {
+                                    price = ntMatch[1];
+                                    priceType = '通用價格文本';
+                                    console.log(`從通用文本找到價格: ${price}, 文本="${item.text}"`);
+                                    foundDiscountPrice = true;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // 檢查獲取到的價格
+                        let priceDisplay = '';
+                        if (foundDiscountPrice) {
+                            priceDisplay = `NT$${price}`;
+                            if (discountRate) priceDisplay += ` (${discountRate}折)`;
+                        } else {
+                            priceDisplay = '未知價格';
+                        }
+                        
+                        // 獲取狀態 (開啟/關閉)
+                        const switchElem = specElem.querySelector('div.eds-switch');
+                        const status = switchElem && switchElem.classList.contains('eds-switch--open') ? '開啟' : '關閉';
+                        
+                        // 檢查是否禁用
+                        const disabled = switchElem && switchElem.classList.contains('eds-switch--disabled');
+                        
+                        // 添加規格信息
+                        specs.push({
+                            name: specName,
+                            stock: stock,
+                            price: price,
+                            priceType: priceType,
+                            priceDisplay: priceDisplay,
+                            originalPrice: originalPrice,
+                            discountRate: discountRate,
+                            status: status,
+                            disabled: disabled
+                        });
+                    } catch (specError) {
+                        console.error('處理規格時出錯:', specError);
                     }
-                    
+                }
+                
+                // 將商品添加到結果中
+                if (specs.length > 0) {
                     products.push({
                         name: productName,
                         specs: specs
                     });
-                } catch (error) {
-                    console.error('處理商品卡片時出錯:', error);
                 }
+            } catch (cardError) {
+                console.error('處理商品卡片時出錯:', cardError);
             }
-            
-            return products;
         }
         
-        return extractProducts();
+        console.log('總共找到商品數量:', products.length);
+        return products;
         """
         
         products = self.driver.execute_script(products_js)
@@ -472,11 +373,15 @@ class 商品搜尋:
             # 建立一個空商品列表
             products = []
             
-        # 統計並返回
+        # 統計並返回結果字典 (而非直接返回商品列表)
         total_specs = sum(len(product.get('specs', [])) for product in products)
         logger.info(f"找到 {len(products)} 個商品和 {total_specs} 個規格")
         
-        return products
+        return {
+            "product_count": len(products),
+            "spec_count": total_specs,
+            "products": products
+        }
     
     def 搜尋特定前綴商品(self, prefix="Fee"):
         """搜尋特定前綴的商品
@@ -1134,58 +1039,186 @@ class 商品搜尋:
             return False
     
     def 批量處理多頁商品(self, 頁數=1):
-        """處理多頁商品的函數
+        """批量處理多頁商品
         
         Args:
-            頁數: 要處理的頁數，默認為1頁
+            頁數 (int): 要處理的頁數
             
         Returns:
-            bool: 是否成功完成所有頁的處理
+            bool: 是否成功
         """
+        logger.info(f"開始批量處理 {頁數} 頁商品...")
+        
+        # 導入依賴模組
         from .批量處理 import 批量處理
         
-        logger.info(f"開始批量處理，計劃處理 {頁數} 頁商品")
-        
-        當前頁 = 1
-        總處理數 = 0
+        if 頁數 < 1:
+            logger.warning("頁數必須大於0，自動設為1")
+            頁數 = 1
+            
+        已處理頁數 = 0
+        總處理規格數 = 0
         總開關成功數 = 0
         總價格成功數 = 0
         
-        while 當前頁 <= 頁數:
-            logger.info(f"正在處理第 {當前頁}/{頁數} 頁")
-            
-            # 首先確保當前頁面處於編輯模式
-            if not self.檢查是否編輯模式():
-                if not self.進入編輯模式():
-                    logger.error(f"無法進入編輯模式，停止第 {當前頁} 頁處理")
-                    return False
-            
-            # 搜尋當前頁的商品
-            products = self.搜尋商品()
-            
-            if products:
-                logger.info(f"第 {當前頁} 頁找到 {len(products)} 個商品")
-                
-                # 使用批量處理模組處理商品
-                批量處理器 = 批量處理(self.driver)
-                處理數, 開關成功數, 價格成功數 = 批量處理器.批量處理商品規格(products)
-                
-                總處理數 += 處理數
-                總開關成功數 += 開關成功數
-                總價格成功數 += 價格成功數
-                
-                logger.info(f"第 {當前頁} 頁處理完成: 處理 {處理數} 個規格，開啟 {開關成功數} 個，調整價格 {價格成功數} 個")
-            else:
-                logger.warning(f"第 {當前頁} 頁未找到商品")
-            
-            # 如果不是最後一頁，前往下一頁
-            if 當前頁 < 頁數:
-                if not self.前往下一頁():
-                    logger.warning(f"無法前往下一頁，提前結束於第 {當前頁} 頁")
-                    break
-                time.sleep(3)  # 等待新頁面加載
-            
-            當前頁 += 1
+        # 確保在編輯模式
+        if not self.檢查是否編輯模式():
+            logger.warning("未處於編輯模式，嘗試進入編輯模式")
+            if not self.進入編輯模式():
+                logger.error("無法進入編輯模式，無法處理")
+                return False
         
-        logger.info(f"多頁批量處理完成: 總共 {總處理數} 個規格，開啟 {總開關成功數} 個，調整價格 {總價格成功數} 個")
-        return True 
+        # 開始處理當前頁和後續頁
+        try:
+            for 當前頁 in range(1, 頁數 + 1):
+                logger.info(f"=== 處理第 {當前頁}/{頁數} 頁 ===")
+                
+                # 搜尋當前頁的商品
+                搜尋結果 = self.搜尋商品()
+                
+                # 診斷搜尋結果
+                if not 搜尋結果:
+                    logger.warning(f"⚠ 第 {當前頁} 頁搜尋結果為空")
+                    continue
+                    
+                if not isinstance(搜尋結果, dict):
+                    logger.warning(f"⚠ 第 {當前頁} 頁搜尋結果格式錯誤: 預期字典類型，實際為 {type(搜尋結果)}")
+                    # 嘗試轉換為正確格式
+                    if isinstance(搜尋結果, list):
+                        logger.info("搜尋結果是列表，嘗試轉換為正確格式")
+                        商品列表 = 搜尋結果
+                        搜尋結果 = {
+                            "product_count": len(商品列表),
+                            "spec_count": sum(len(product.get('specs', [])) for product in 商品列表),
+                            "products": 商品列表
+                        }
+                    else:
+                        logger.error(f"無法處理搜尋結果類型: {type(搜尋結果)}")
+                        continue
+                
+                # 檢查字典是否包含必要的鍵
+                if not all(key in 搜尋結果 for key in ["product_count", "spec_count", "products"]):
+                    logger.warning(f"⚠ 第 {當前頁} 頁搜尋結果缺少必要的鍵")
+                    missing_keys = [key for key in ["product_count", "spec_count", "products"] if key not in 搜尋結果]
+                    logger.warning(f"缺少的鍵: {missing_keys}")
+                    
+                    # 嘗試修復結果字典
+                    if "products" not in 搜尋結果:
+                        logger.error("搜尋結果缺少 'products' 鍵，無法繼續")
+                        continue
+                    
+                    if "product_count" not in 搜尋結果:
+                        搜尋結果["product_count"] = len(搜尋結果["products"])
+                        logger.info(f"已添加缺少的 'product_count' 鍵: {搜尋結果['product_count']}")
+                        
+                    if "spec_count" not in 搜尋結果:
+                        搜尋結果["spec_count"] = sum(len(product.get('specs', [])) for product in 搜尋結果["products"])
+                        logger.info(f"已添加缺少的 'spec_count' 鍵: {搜尋結果['spec_count']}")
+                
+                商品列表 = 搜尋結果.get("products", [])
+                
+                if not 商品列表:
+                    logger.warning(f"⚠ 第 {當前頁} 頁未找到任何商品")
+                    
+                    # 診斷頁面結構
+                    try:
+                        page_diagnostic = self.driver.execute_script("""
+                        return {
+                            html: document.documentElement.outerHTML.substring(0, 1000),
+                            productElements: document.querySelectorAll('div.discount-item-component, div.discount-edit-item').length,
+                            url: window.location.href,
+                            title: document.title
+                        }
+                        """)
+                        logger.info(f"頁面診斷: URL={page_diagnostic.get('url')}, 標題={page_diagnostic.get('title')}")
+                        logger.info(f"產品元素數量: {page_diagnostic.get('productElements')}")
+                        
+                        # 嘗試保存截圖
+                        screenshot_path = f"page_diagnosis_page{當前頁}.png"
+                        self.driver.save_screenshot(screenshot_path)
+                        logger.info(f"已保存第 {當前頁} 頁截圖到 {screenshot_path}")
+                    except Exception as diag_error:
+                        logger.error(f"頁面診斷時發生錯誤: {str(diag_error)}")
+                    
+                    continue
+                    
+                logger.info(f"第 {當前頁} 頁找到 {len(商品列表)} 個商品")
+                
+                # 針對當前頁進行處理 - 創建批量處理對象
+                try:
+                    批量處理器 = 批量處理(self.driver)
+                    
+                    # 處理當前頁商品
+                    處理結果 = 批量處理器.批量處理商品規格(商品列表)
+                    
+                    # 檢查處理結果
+                    if isinstance(處理結果, tuple) and len(處理結果) == 3:
+                        處理數, 開關成功數, 價格成功數 = 處理結果
+                        總處理規格數 += 處理數
+                        總開關成功數 += 開關成功數
+                        總價格成功數 += 價格成功數
+                        
+                        logger.info(f"第 {當前頁} 頁處理完成: 處理 {處理數} 個規格，成功開關 {開關成功數} 個，成功調價 {價格成功數} 個")
+                    else:
+                        logger.warning(f"⚠ 第 {當前頁} 頁處理結果格式不正確: {處理結果}")
+                        # 嘗試提取數據，提高容錯性
+                        if isinstance(處理結果, tuple):
+                            logger.info(f"處理結果是元組，長度為 {len(處理結果)}")
+                            # 嘗試提取可用的數據
+                            for i, val in enumerate(處理結果):
+                                if i == 0 and isinstance(val, int):
+                                    總處理規格數 += val
+                                    logger.info(f"已提取處理數: {val}")
+                                elif i == 1 and isinstance(val, int):
+                                    總開關成功數 += val
+                                    logger.info(f"已提取開關成功數: {val}")
+                                elif i == 2 and isinstance(val, int):
+                                    總價格成功數 += val
+                                    logger.info(f"已提取價格成功數: {val}")
+                        elif isinstance(處理結果, dict):
+                            logger.info("處理結果是字典，嘗試提取數據")
+                            總處理規格數 += 處理結果.get("處理數", 0) 
+                            總開關成功數 += 處理結果.get("開關成功數", 0)
+                            總價格成功數 += 處理結果.get("價格成功數", 0)
+                
+                except Exception as batch_error:
+                    logger.error(f"處理第 {當前頁} 頁時發生錯誤: {str(batch_error)}")
+                    # 繼續處理下一頁，提高程序的穩定性
+                
+                已處理頁數 += 1
+                
+                # 如果還有下一頁要處理
+                if 當前頁 < 頁數:
+                    logger.info(f"準備前往第 {當前頁 + 1} 頁...")
+                    
+                    # 前往下一頁
+                    if not self.前往下一頁():
+                        logger.warning(f"⚠ 無法前往第 {當前頁 + 1} 頁，提前結束")
+                        break
+                    
+                    # 在新頁面等待加載
+                    time.sleep(5)
+                    
+                    # 確保在編輯模式(頁面跳轉可能會退出編輯模式)
+                    if not self.檢查是否編輯模式():
+                        logger.warning(f"前往第 {當前頁 + 1} 頁後未處於編輯模式，嘗試重新進入")
+                        if not self.進入編輯模式():
+                            logger.error(f"⚠ 無法在第 {當前頁 + 1} 頁進入編輯模式，跳過該頁")
+                            continue
+            
+            # 處理完成，顯示總結果
+            if 已處理頁數 > 0:
+                logger.info(f"多頁處理完成: 共處理 {已處理頁數}/{頁數} 頁，{總處理規格數} 個規格")
+                logger.info(f"成功開關: {總開關成功數} 個，成功調價: {總價格成功數} 個")
+                
+                return True
+            else:
+                logger.warning("⚠ 未能成功處理任何頁面")
+                return False
+        
+        except Exception as e:
+            logger.error(f"⚠ 多頁批量處理過程中發生錯誤: {str(e)}")
+            # 嘗試捕獲錯誤堆疊以便診斷
+            import traceback
+            logger.error(f"詳細錯誤堆疊:\n{traceback.format_exc()}")
+            return False 

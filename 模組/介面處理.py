@@ -41,7 +41,7 @@ class 介面控制:
         url_frame = ttk.Frame(self.main_frame)
         url_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
         
-        ttk.Label(url_frame, text="請輸入蝦皮活動網址:").grid(row=0, column=0, sticky=tk.W, padx=5)
+        ttk.Label(url_frame, text="蝦皮網址 (選填):").grid(row=0, column=0, sticky=tk.W, padx=5)
         self.url_entry = ttk.Entry(url_frame, width=80)
         self.url_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5)
         url_frame.columnconfigure(1, weight=1)
@@ -66,7 +66,7 @@ class 介面控制:
         
         # 初始歡迎訊息
         self.log_message("歡迎使用蝦皮商品規格調價自動化程式")
-        self.log_message("請輸入蝦皮活動網址，並點擊「啟動Chrome瀏覽器」開始操作")
+        self.log_message("請點擊「啟動Chrome瀏覽器」開始操作")
     
     def get_url(self):
         """獲取URL輸入框的值"""
@@ -280,7 +280,34 @@ class 介面控制:
         start_idx = (page - 1) * page_size
         end_idx = min(start_idx + page_size, total_products)
         
-        self.日誌訊息(f"===== 商品列表 (顯示 {start_idx+1}-{end_idx} / 共 {total_products} 個商品) =====")
+        # 頁面標題使用更明顯的視覺樣式
+        self.text_area.tag_configure("page_header", font=("Arial", 11, "bold"), foreground="#1E90FF")
+        page_header = f"===== 商品列表 (顯示 {start_idx+1}-{end_idx} / 共 {total_products} 個商品) ====="
+        self.text_area.insert(tk.END, page_header + "\n", "page_header")
+        
+        # 定義視覺樣式
+        self.text_area.tag_configure("product_name", font=("Arial", 10, "bold"), foreground="#000080")
+        self.text_area.tag_configure("divider", foreground="#A0A0A0")
+        self.text_area.tag_configure("stat_label", foreground="#555555")
+        self.text_area.tag_configure("stat_value", foreground="#333333", font=("Arial", 9, "bold"))
+        self.text_area.tag_configure("high_value", foreground="#006400", font=("Arial", 9, "bold"))
+        self.text_area.tag_configure("low_value", foreground="#8B0000", font=("Arial", 9, "bold"))
+        self.text_area.tag_configure("spec_preview", foreground="#555555", font=("Arial", 9, "bold"))
+        
+        # 規格狀態標籤
+        self.text_area.tag_configure("status_on", foreground="#006400", font=("Arial", 9, "bold"))
+        self.text_area.tag_configure("status_off", foreground="#8B0000", font=("Arial", 9, "bold"))
+        self.text_area.tag_configure("status_disabled", foreground="#808080", font=("Arial", 9, "bold"))
+        
+        # 庫存狀態標籤
+        self.text_area.tag_configure("stock_ok", foreground="#006400")
+        self.text_area.tag_configure("stock_low", foreground="#FF8C00")
+        self.text_area.tag_configure("stock_out", foreground="#8B0000")
+        
+        # 價格顯示樣式
+        self.text_area.tag_configure("price_normal", foreground="#000080")
+        self.text_area.tag_configure("price_high", foreground="#8B0000")
+        self.text_area.tag_configure("price_low", foreground="#006400")
         
         # 顯示當前頁的商品
         for i in range(start_idx, end_idx):
@@ -288,8 +315,11 @@ class 介面控制:
             product_name = product.get('name', f"商品 #{i+1}")
             specs = product.get('specs', [])
             
-            self.日誌訊息(f"\n{i+1}. {product_name}")
-            self.日誌訊息("-" * 80)
+            # 添加商品標題和分隔線，使用更美觀的格式
+            self.text_area.insert(tk.END, f"\n{i+1}. ", "stat_label")
+            self.text_area.insert(tk.END, product_name, "product_name")
+            self.text_area.insert(tk.END, "\n", "normal")
+            self.text_area.insert(tk.END, "-" * 80 + "\n", "divider")
             
             # 規格計數
             total_specs = len(specs)
@@ -300,13 +330,46 @@ class 介面控制:
             in_stock = sum(1 for spec in specs if spec.get('stock') and ''.join(filter(str.isdigit, str(spec.get('stock', '0')))) != '0')
             sold_out = total_specs - in_stock
             
-            # 顯示規格統計
-            self.日誌訊息(f"規格總數: {total_specs} | 開啟狀態: {open_specs} | 關閉狀態: {closed_specs}")
-            self.日誌訊息(f"有庫存規格: {in_stock} | 售罄規格: {sold_out}")
+            # 顯示規格統計 (增強的視覺效果)
+            self.text_area.insert(tk.END, "規格總數: ", "stat_label")
+            self.text_area.insert(tk.END, f"{total_specs}", "stat_value")
+            self.text_area.insert(tk.END, " | 開啟狀態: ", "stat_label")
+            
+            # 根據開啟狀態顯示不同顏色
+            if open_specs > 0:
+                self.text_area.insert(tk.END, f"{open_specs}", "high_value")
+            else:
+                self.text_area.insert(tk.END, f"{open_specs}", "low_value")
+                
+            self.text_area.insert(tk.END, " | 關閉狀態: ", "stat_label")
+            
+            if closed_specs > 0:
+                self.text_area.insert(tk.END, f"{closed_specs}", "low_value")
+            else:
+                self.text_area.insert(tk.END, f"{closed_specs}", "stat_value")
+            
+            self.text_area.insert(tk.END, "\n", "normal")
+            
+            # 顯示庫存統計
+            self.text_area.insert(tk.END, "有庫存規格: ", "stat_label")
+            
+            if in_stock > 0:
+                self.text_area.insert(tk.END, f"{in_stock}", "high_value")
+            else:
+                self.text_area.insert(tk.END, f"{in_stock}", "low_value")
+                
+            self.text_area.insert(tk.END, " | 售罄規格: ", "stat_label")
+            
+            if sold_out > 0:
+                self.text_area.insert(tk.END, f"{sold_out}", "low_value")
+            else:
+                self.text_area.insert(tk.END, f"{sold_out}", "stat_value")
+                
+            self.text_area.insert(tk.END, "\n", "normal")
             
             # 顯示前5個規格的簡要信息
             if specs:
-                self.日誌訊息("\n規格預覽:")
+                self.text_area.insert(tk.END, "\n規格預覽:\n", "spec_preview")
                 for j, spec in enumerate(specs[:5]):  # 只顯示前5個規格
                     spec_name = spec.get('name', '未知規格')
                     stock = spec.get('stock', '0')
@@ -318,11 +381,56 @@ class 介面控制:
                     if len(spec_name) > 30:
                         spec_name = spec_name[:27] + "..."
                     
-                    # 顯示規格簡要信息
-                    self.日誌訊息(f"- {spec_name} | 庫存: {stock} | 價格: {price} | 狀態: {status}{' (已禁用)' if disabled else ''}")
+                    # 顯示規格名稱
+                    self.text_area.insert(tk.END, f"- {spec_name}", "normal")
+                    
+                    # 顯示庫存 (根據數量使用不同顏色)
+                    stock_num = 0
+                    try:
+                        stock_num = int(''.join(filter(str.isdigit, str(stock))))
+                    except:
+                        pass
+                        
+                    self.text_area.insert(tk.END, " | 庫存: ", "stat_label")
+                    
+                    if stock_num > 10:
+                        self.text_area.insert(tk.END, f"{stock}", "stock_ok")
+                    elif stock_num > 0:
+                        self.text_area.insert(tk.END, f"{stock}", "stock_low")
+                    else:
+                        self.text_area.insert(tk.END, f"{stock}", "stock_out")
+                    
+                    # 顯示價格 (根據價格範圍使用不同顏色)
+                    price_num = 0
+                    try:
+                        price_num = float(''.join(filter(lambda x: x.isdigit() or x == '.', str(price))))
+                    except:
+                        pass
+                        
+                    self.text_area.insert(tk.END, " | 價格: ", "stat_label")
+                    
+                    if price_num > 500:
+                        self.text_area.insert(tk.END, f"{price}", "price_high")
+                    elif price_num <= 0:
+                        self.text_area.insert(tk.END, f"{price}", "price_low") 
+                    else:
+                        self.text_area.insert(tk.END, f"{price}", "price_normal")
+                    
+                    # 顯示狀態 (使用不同顏色)
+                    self.text_area.insert(tk.END, " | 狀態: ", "stat_label")
+                    
+                    if status == '開啟':
+                        self.text_area.insert(tk.END, status, "status_on")
+                    else:
+                        self.text_area.insert(tk.END, status, "status_off")
+                        
+                    if disabled:
+                        self.text_area.insert(tk.END, " (已禁用)", "status_disabled")
+                        
+                    self.text_area.insert(tk.END, "\n", "normal")
                 
                 if len(specs) > 5:
-                    self.日誌訊息(f"... 還有 {len(specs) - 5} 個規格未顯示 ...")
+                    self.text_area.insert(tk.END, f"... 還有 {len(specs) - 5} 個規格未顯示 ...\n", "stat_label")
     
     def 取消處理(self):
         """取消處理並清理界面"""
