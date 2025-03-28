@@ -22,6 +22,7 @@ from 模組.瀏覽器處理 import 瀏覽器控制
 from 模組.商品處理 import 商品處理集成
 from 模組.介面處理 import 介面控制
 from 模組.彈窗處理 import 彈窗處理
+from 模組.excel輸出 import Excel處理
 
 # 設置日誌
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -287,23 +288,46 @@ class 調價主程式:
             # 批量處理商品規格
             結果 = product_handler.批量處理.批量處理商品規格(self.products)
             
-            # 確保結果包含三個值
-            if isinstance(結果, tuple) and len(結果) == 3:
-                總處理數, 開關成功數, 價格成功數 = 結果
+            # 確保結果包含4個值 (總處理數, 開關成功數, 價格成功數, 調整記錄列表)
+            if isinstance(結果, tuple) and len(結果) == 4:
+                總處理數, 開關成功數, 價格成功數, 調整記錄列表 = 結果
             else:
-                # 如果返回结果不是预期的三元组，记录错误并使用默认值
+                # 如果返回結果不是預期的，記錄錯誤並使用默認值
                 self.interface.log_message("⚠ 批量處理返回的結果格式不正確")
                 logger.warning(f"批量處理返回的結果格式不正確: {結果}")
                 總處理數 = 0
                 開關成功數 = 0
                 價格成功數 = 0
+                調整記錄列表 = []
             
             # 顯示處理結果
             self.interface.log_message(f"批量處理完成: 總共 {總處理數} 個規格，開啟 {開關成功數} 個，調整價格 {價格成功數} 個")
             
+            # 生成Excel報表
+            if 調整記錄列表:
+                try:
+                    self.interface.log_message("正在生成調整記錄Excel...")
+                    excel處理 = Excel處理()
+                    excel檔案路徑 = excel處理.生成調整記錄Excel(調整記錄列表)
+                    
+                    if excel檔案路徑:
+                        # 添加處理摘要
+                        excel處理.添加調整統計摘要(excel檔案路徑, 總處理數, 開關成功數, 價格成功數)
+                        self.interface.log_message(f"✓ 調整記錄Excel已生成: {excel檔案路徑}")
+                        
+                        # 打開報表目錄
+                        os.startfile(os.path.dirname(excel檔案路徑))
+                    else:
+                        self.interface.log_message("⚠ 調整記錄Excel生成失敗")
+                except Exception as excel_error:
+                    logger.error(f"生成Excel報表時發生錯誤: {str(excel_error)}")
+                    self.interface.log_message(f"⚠ 生成Excel報表時發生錯誤: {str(excel_error)}")
+            
             # 更新UI
             if 總處理數 > 0:
                 結果訊息 = f"批量處理完成!\n\n總共 {總處理數} 個規格\n開啟 {開關成功數} 個\n調整價格 {價格成功數} 個"
+                if 調整記錄列表:
+                    結果訊息 += f"\n\n調整記錄已儲存至Excel檔案"
                 self.interface.log_message(結果訊息.replace('\n', ' '))
                 self.interface.show_info_dialog("處理結果", 結果訊息)
             else:
@@ -363,12 +387,55 @@ class 調價主程式:
             
             # 執行多頁批量處理
             try:
-                success = product_handler.搜尋.批量處理多頁商品(頁數)
+                # 收集所有頁面的調整記錄
+                多頁調整記錄 = []
+                總處理規格數 = 0
+                總開關成功數 = 0
+                總價格成功數 = 0
+                
+                # 多頁處理返回值包含所有頁面的調整記錄
+                多頁處理結果 = product_handler.搜尋.批量處理多頁商品(頁數)
+                
+                # 確認返回值格式
+                if isinstance(多頁處理結果, tuple) and len(多頁處理結果) >= 4:
+                    success, 已處理頁數, 處理結果摘要, 多頁調整記錄 = 多頁處理結果
+                    
+                    # 處理結果摘要包含總規格數、開關成功數和價格成功數
+                    if isinstance(處理結果摘要, dict):
+                        總處理規格數 = 處理結果摘要.get("總處理規格數", 0)
+                        總開關成功數 = 處理結果摘要.get("總開關成功數", 0)
+                        總價格成功數 = 處理結果摘要.get("總價格成功數", 0)
+                else:
+                    success = False if 多頁處理結果 is None else 多頁處理結果
+                
+                # 生成Excel報表
+                if 多頁調整記錄:
+                    try:
+                        self.interface.log_message("正在生成調整記錄Excel...")
+                        excel處理 = Excel處理()
+                        excel檔案路徑 = excel處理.生成調整記錄Excel(多頁調整記錄)
+                        
+                        if excel檔案路徑:
+                            # 添加處理摘要
+                            excel處理.添加調整統計摘要(excel檔案路徑, 總處理規格數, 總開關成功數, 總價格成功數)
+                            self.interface.log_message(f"✓ 調整記錄Excel已生成: {excel檔案路徑}")
+                            
+                            # 打開報表目錄
+                            os.startfile(os.path.dirname(excel檔案路徑))
+                        else:
+                            self.interface.log_message("⚠ 調整記錄Excel生成失敗")
+                    except Exception as excel_error:
+                        logger.error(f"生成Excel報表時發生錯誤: {str(excel_error)}")
+                        self.interface.log_message(f"⚠ 生成Excel報表時發生錯誤: {str(excel_error)}")
                 
                 # 顯示處理結果
                 if success:
-                    self.interface.log_message(f"✓ 多頁批量處理完成，共處理了 {頁數} 頁商品")
-                    self.interface.show_info_dialog("處理結果", f"多頁批量處理完成!\n\n成功處理了 {頁數} 頁商品")
+                    結果訊息 = f"多頁批量處理完成!\n\n成功處理了 {已處理頁數}/{頁數} 頁商品\n總共 {總處理規格數} 個規格\n開啟 {總開關成功數} 個\n調整價格 {總價格成功數} 個"
+                    if 多頁調整記錄:
+                        結果訊息 += f"\n\n調整記錄已儲存至Excel檔案"
+                    
+                    self.interface.log_message(f"✓ {結果訊息.replace('!', '').replace('\n', ' ')}")
+                    self.interface.show_info_dialog("處理結果", 結果訊息)
                 else:
                     self.interface.log_message("⚠ 多頁批量處理過程中發生錯誤，請查看日誌了解詳情")
                     self.interface.show_warning_dialog("處理結果", "多頁批量處理過程中發生錯誤，請查看日誌了解詳情")

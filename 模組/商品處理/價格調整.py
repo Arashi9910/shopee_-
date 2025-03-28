@@ -32,6 +32,14 @@ class 價格調整:
         """調整特定商品規格的價格，使用接近人工操作的方式並實現可靠的重試機制"""
         MAX_RETRIES = 3  # 減少最大重試次數，提高效率
         success = False
+        調整記錄 = {
+            "商品名稱": 商品名稱,
+            "規格名稱": 規格名稱,
+            "輸入價格": 新價格,
+            "原價格": "未知",
+            "調整結果": False,
+            "調整時間": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
         
         for retry_count in range(MAX_RETRIES):
             try:
@@ -178,6 +186,32 @@ class 價格調整:
                         continue
                     
                     logger.info("找到規格行，準備調整價格...")
+                    
+                    # 獲取當前價格
+                    try:
+                        當前價格 = self.driver.execute_script("""
+                            if (!arguments[0]) return 'N/A';
+                            
+                            // 查找價格欄位
+                            const input = arguments[0].querySelector('input.eds-input__input');
+                            if (input) {
+                                return input.value;
+                            }
+                            
+                            // 如果沒有找到輸入框，嘗試查找只讀價格
+                            const priceElement = arguments[0].querySelector('.currency-input');
+                            if (priceElement) {
+                                return priceElement.textContent.trim();
+                            }
+                            
+                            return 'N/A';
+                        """, spec_row)
+                        
+                        if 當前價格 and 當前價格 != 'N/A':
+                            調整記錄["原價格"] = 當前價格
+                            logger.info(f"當前價格: {當前價格}")
+                    except Exception as e:
+                        logger.warning(f"獲取當前價格時出錯: {str(e)}")
                     
                     # 確保規格開關已開啟
                     switch_status = self.driver.execute_script("""
@@ -532,7 +566,8 @@ class 價格調整:
                             continue
                         
                         success = True
-                        return True
+                        調整記錄["調整結果"] = True
+                        return success, 調整記錄
                     else:
                         error_msg = input_result.get('message', '未知錯誤') if input_result else '輸入操作失敗'
                         logger.warning(f"❌ 價格輸入失敗: {error_msg}")
@@ -558,7 +593,8 @@ class 價格調整:
                                     if current_value == str(新價格):
                                         logger.info(f"✓ 使用直接方法成功設置價格: {新價格}")
                                         success = True
-                                        return True
+                                        調整記錄["調整結果"] = True
+                                        return success, 調整記錄
                             except Exception as direct_input_error:
                                 logger.error(f"直接輸入方法失敗: {str(direct_input_error)}")
                 except Exception as e:
@@ -575,4 +611,4 @@ class 價格調整:
         if not success:
             logger.error(f"❌ 無法調整商品 '{商品名稱}' 規格 '{規格名稱}' 的價格，已達到最大重試次數")
         
-        return success 
+        return success, 調整記錄 
